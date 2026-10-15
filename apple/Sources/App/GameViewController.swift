@@ -104,7 +104,9 @@ import HistoriaCore
                 }
                 try Task.checkCancellation(); success(result)
             } catch {
-                let safe = error as? PlanError ?? PlanError(error is CancellationError || (error as? URLError)?.code == .cancelled ? "cancelled" : "network")
+                let safe: PlanError
+                if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled { safe = PlanError("cancelled") }
+                else { safe = error as? PlanError ?? PlanError("network") }
                 reply(["ok": false, "error": ["code": safe.code, "message": safe.message]], nil)
             }
         }

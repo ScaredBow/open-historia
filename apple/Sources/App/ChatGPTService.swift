@@ -150,10 +150,11 @@ import HistoriaCore
                     var updated = original
                     let data = try await self.token(["grant_type": "refresh_token", "client_id": client, "refresh_token": refresh])
                     updated["pending"] = ["data": data, "received": Date().timeIntervalSince1970]; try self.save(updated)
-                    updated = try await self.validatePending(updated); try self.save(updated)
                 }
                 try await rotation.value
                 p = try profile(id)
+                try Task.checkCancellation()
+                p = try await validatePending(p); try save(p)
             }
         } catch let error as PlanError {
             if ["invalid_identity", "sign_in_required"].contains(error.code) { p.removeValue(forKey: "tokens"); p.removeValue(forKey: "pending"); p["scopes"] = []; try save(p) }

@@ -31,7 +31,7 @@ open OpenHistoria.xcodeproj
 Build the OpenHistoria scheme; the Clip is embedded in the containing app.
 `swift test --package-path apple` runs the core protocol tests from the repository
 root. `npm ci --prefix apple/browser-tests && npm test --prefix apple/browser-tests` runs the bundled UI/sign-in/save-migration regression with mocked native replies (requires Chrome, or set `BROWSER_PATH`). The Apple workflow builds unsigned device targets, checks the Clip's size,
-and runs native unit/UI tests for the containing app and App Clip in the simulator. Unsigned artifacts are validation
+and runs native unit/UI tests for the containing app and App Clip in the iOS 18.6 simulator. Avoid the iOS 18.5 simulator with Xcode 16.4: [WebKit bug 293831](https://bugs.webkit.org/show_bug.cgi?id=293831) prevents WebKit apps targeting older systems from launching. Unsigned artifacts are validation
 outputs, not installable releases. `Local.xcconfig` is ignored by git.
 
 ## Design
