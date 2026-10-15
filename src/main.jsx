@@ -18,7 +18,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
 const registerServiceWorker = () => {
-    if (!import.meta.env.DEV && "serviceWorker" in navigator) {
+    if (!import.meta.env.VITE_OH_APPLE && !import.meta.env.DEV && "serviceWorker" in navigator) {
         window.addEventListener("load", () => {
             navigator.serviceWorker.register("/sw.js").catch((error) => {
                 console.warn("Service worker registration failed:", error);
@@ -45,6 +45,7 @@ const mount = () => {
     // Live-translates the UI when a non-English language is set in Settings.
     startTranslator();
     registerServiceWorker();
+    if (import.meta.env.VITE_OH_APPLE) void import("./apple/welcome.jsx").then(({ showAppleWelcome }) => showAppleWelcome());
     // The Android app rests in the background once nothing is being generated
     // (runtime/native/backgroundPause.js).
     if (import.meta.env.VITE_OH_NATIVE) installNativeBackgroundPause(isGenerating);

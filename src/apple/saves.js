@@ -24,6 +24,12 @@ export async function installAppleSaves() {
     notice.setAttribute('role', 'note');
     notice.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:2147482999;background:#222;color:white;padding:8px;font:12px system-ui;text-align:center';
     notice.textContent = 'App Clip saves are temporary. Use Keep saves, then get the full app to continue.';
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button'; dismiss.textContent = '×';
+    dismiss.setAttribute('aria-label', 'Dismiss save notice');
+    dismiss.style.cssText = 'color:white;background:transparent;border:0;font:22px system-ui;min-width:44px;min-height:44px';
+    dismiss.onclick = () => notice.remove();
+    notice.append(dismiss);
     document.body.append(notice);
   } else {
     // Import only into a genuinely empty library. Never replace an existing

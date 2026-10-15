@@ -50,6 +50,7 @@ import HistoriaCore
             web.isOpaque = false; web.backgroundColor = view.backgroundColor
             web.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(web)
             NSLayoutConstraint.activate([web.leadingAnchor.constraint(equalTo: view.leadingAnchor), web.trailingAnchor.constraint(equalTo: view.trailingAnchor), web.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), web.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)])
+            status.isHidden = true
             web.load(URLRequest(url: URL(string: server.origin + "/index.html")!))
         } catch { status.text = "The local game could not start. Close Open Historia and try again. No saved data was changed." }
     }

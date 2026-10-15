@@ -21,6 +21,10 @@ jobs:
       - run: npm ci
       - run: npm run test:apple
       - run: npm run build:ios
+      - name: Bundled UI and save migration browser tests (mock native transport)
+        run: |
+          npm ci --prefix apple/browser-tests
+          npm test --prefix apple/browser-tests
       - name: Core security and protocol tests
         run: swift test --package-path apple
       - name: Generate native project

@@ -1,7 +1,7 @@
 # Open Historia for iOS and App Clips
 
 This port bundles the existing game UI inside a native iOS 17+ application and
-App Clip. Both run the game and save library on the device. Map data still comes
+App Clip. Both run the game and save library on the device. An Apple-only welcome dialog offers ChatGPT sign-in before entering the library. Map data still comes
 from the game's existing verified content nodes, and model inference goes to
 OpenAI. It does not embed the hosted website, run a VM, or run models offline.
 The website deployment and launch metadata are not changed by this PR.
@@ -30,8 +30,8 @@ open OpenHistoria.xcodeproj
 
 Build the OpenHistoria scheme; the Clip is embedded in the containing app.
 `swift test --package-path apple` runs the core protocol tests from the repository
-root. The Apple workflow builds unsigned device targets, checks the Clip's size,
-and runs native unit/UI tests in the simulator. Unsigned artifacts are validation
+root. `npm ci --prefix apple/browser-tests && npm test --prefix apple/browser-tests` runs the bundled UI/sign-in/save-migration regression with mocked native replies (requires Chrome, or set `BROWSER_PATH`). The Apple workflow builds unsigned device targets, checks the Clip's size,
+and runs native unit/UI tests for the containing app and App Clip in the simulator. Unsigned artifacts are validation
 outputs, not installable releases. `Local.xcconfig` is ignored by git.
 
 ## Design

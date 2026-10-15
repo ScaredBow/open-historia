@@ -171,7 +171,7 @@ const demoAcknowledged = () => {
 };
 
       const showDemoNotice = (onContinue) => {
-        if (isNativeApp() || demoAcknowledged()) return onContinue();
+        if (import.meta.env.VITE_OH_APPLE || isNativeApp() || demoAcknowledged()) return onContinue();
 
         const close = () => {
           try { sessionStorage.setItem(DEMO_ACK_KEY, "1"); } catch { /* private mode */ }
