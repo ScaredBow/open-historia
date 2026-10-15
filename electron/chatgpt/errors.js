@@ -11,6 +11,12 @@ const messages = {
   access_denied: 'ChatGPT sign-in was declined. You can try again when ready.',
   network: 'Could not reach ChatGPT. Check your connection and try again.',
   incomplete: 'ChatGPT did not complete the response. No partial result was accepted.',
+  permission_denied: 'ChatGPT plan access is restricted by policy, region, or permission. Check your account and integration settings.',
+  subscription_sharing_user_not_eligible: 'This account or workspace is not eligible for ChatGPT plan usage.',
+  subscription_sharing_unsupported_capability: 'This request uses a capability unsupported by ChatGPT plan usage.',
+  subscription_sharing_route_not_supported: 'This ChatGPT plan endpoint is unsupported. Check the integration configuration.',
+  authorization_context_invalid: 'The ChatGPT permission context does not authorize this operation. Check the client and grant configuration.',
+  invalid_client: 'The ChatGPT client registration is invalid. Check the integration configuration.',
   invalid_request: 'The ChatGPT request was invalid.',
   model_unavailable: 'This model is unavailable for the selected ChatGPT account. Refresh models in Settings.',
   subscription_sharing_usage_limit_exceeded: 'Your ChatGPT plan usage limit has been reached. Open Manage usage in Settings.',
@@ -30,8 +36,11 @@ export function safeError(error) {
 }
 export function responseError(code, status) {
   if (['subscription_sharing_usage_limit_exceeded', 'subscription_sharing_usage_unavailable'].includes(code)) return new ChatGPTError(code, status);
-  if (['invalid_grant', 'invalid_token', 'login_required'].includes(code) || status === 401) return new ChatGPTError('sign_in_required', status);
-  if (status === 403) return new ChatGPTError('sharing_not_enabled', status);
+  if (['subscription_sharing_user_not_eligible', 'subscription_sharing_unsupported_capability', 'subscription_sharing_route_not_supported', 'invalid_client'].includes(code)) return new ChatGPTError(code, status);
+  if (['chatpass_v2_scope_not_authorized', 'chatpass_v2_invalid_authorization_context'].includes(code)) return new ChatGPTError('authorization_context_invalid', status);
+  if (code === 'subscription_sharing_user_unavailable') return new ChatGPTError('service_unavailable', status);
+  if (['invalid_grant', 'invalid_token', 'login_required', 'invalid_refresh_token', 'token_expired', 'refresh_token_expired', 'refresh_token_invalidated', 'refresh_token_reused'].includes(code) || status === 401) return new ChatGPTError('sign_in_required', status);
+  if (status === 403) return new ChatGPTError('permission_denied', status);
   if (status === 429) return new ChatGPTError('rate_limited', status);
   if (status >= 500) return new ChatGPTError('service_unavailable', status);
   if (code === 'model_not_found' || status === 404) return new ChatGPTError('model_unavailable', status);

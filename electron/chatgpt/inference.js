@@ -2,12 +2,13 @@ import { RESOURCE } from './oauth.js';
 import { ChatGPTError, responseError } from './errors.js';
 
 // Endpoint, credential, storage and streaming policy are owned by main, never IPC.
-export async function apiRequest(path, access, { fetchImpl = fetch, signal, body } = {}) {
+export async function apiRequest(path, access, { fetchImpl = fetch, signal, body, onResponse } = {}) {
   const response = await fetchImpl(`${RESOURCE}/${path}`, {
     method: body ? 'POST' : 'GET', redirect: 'error', signal,
     headers: { Authorization: `Bearer ${access}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
+  onResponse?.(response);
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw responseError(data.error?.code, response.status);
@@ -33,7 +34,7 @@ export function buildRequest(request, model) {
     }
     for (const part of message.parts || []) {
       if (typeof part.text === 'string') input.push({ role: message.role === 'model' ? 'assistant' : 'user', content: part.text });
-      else if (part.functionCall) input.push({ type: 'function_call', call_id: part.functionCall.id, name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) });
+      else if (part.functionCall) input.push({ type: 'function_call', namespace: 'open_historia', call_id: part.functionCall.id, name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) });
       else if (part.functionResponse) input.push({ type: 'function_call_output', call_id: part.functionResponse.id, output: JSON.stringify(part.functionResponse.response ?? null) });
     }
   }
@@ -42,14 +43,15 @@ export function buildRequest(request, model) {
   const tools = declarations.map(tool => ({ type: 'function', name: tool.name, description: tool.description || '', parameters: tool.schema, strict: false }));
   return {
     model, instructions: request.systemPrompt, input, store: false, stream: true, include: ["reasoning.encrypted_content"],
-    ...(tools.length ? { tools, tool_choice: request.requireOutputTool && request.tool ? { type: 'function', name: request.tool.name } : 'required', parallel_tool_calls: !request.requireOutputTool } : {}),
+    ...(tools.length ? { tools: [{ type: 'namespace', name: 'open_historia', description: 'Open Historia game output and lookups', tools }], tool_choice: 'required', parallel_tool_calls: !request.requireOutputTool } : {}),
     // ChatGPT plan usage rejects max_output_tokens, even when an API-key
     // provider's saved settings include a positive maxTokens value.
   };
 }
 
 export async function consumeResponse(response, onEvent = () => {}) {
-  if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new ChatGPTError('incomplete');
+  const contentType = response.headers.get('content-type');
+  if (!response.body || (contentType !== null && contentType.split(';')[0].trim().toLowerCase() !== 'text/event-stream')) throw new ChatGPTError('incomplete');
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '', dataLines = [], completed, total = 0;
@@ -100,7 +102,7 @@ export function gameResult(response, outputTool) {
     try { args = JSON.parse(item.arguments); } catch { throw new ChatGPTError('incomplete'); }
     return { id: item.call_id, name: item.name, args };
   });
-  if (lookupCalls.length && response.output?.some(item => item.type === 'reasoning')) {
+  if (lookupCalls.length && response.output?.some(item => item.type === 'reasoning' || item.namespace)) {
     lookupCalls[0].chatgptItems = response.output.filter(item => ['reasoning', 'function_call', 'message'].includes(item.type));
   }
   const rawText = (response.output || []).filter(item => item.type === 'message')

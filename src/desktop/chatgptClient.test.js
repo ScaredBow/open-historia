@@ -36,3 +36,37 @@ test('cancellation reaches main and cannot accept a late successful result', asy
   await assert.rejects(callChatGPT('', [], { signal: controller.signal, entrySettings: { chatgptProfileId: 'p1' } }), { name: 'AbortError' });
   assert.equal(cancelled, true); assert.equal(mock.removed(), true);
 });
+
+for (const code of ['network', 'service_unavailable', 'model_unavailable', 'rate_limited']) test(`${code} advances to the configured fallback`, async () => {
+  bridge({ infer: async () => ({ ok: false, error: { code, message: code } }) });
+  const attempts = [];
+  const result = await runWithFallback({ entries: [{ id: 'plan' }, { id: 'backup' }], store: new Map(), rateLimitPolicy: 'next', attempt: async entry => {
+    attempts.push(entry.id);
+    return entry.id === 'backup' ? 'backup answer' : callChatGPT('', []);
+  } });
+  assert.equal(result.result, 'backup answer'); assert.deepEqual(attempts, ['plan', 'backup']);
+});
+
+for (const code of ['subscription_sharing_usage_limit_exceeded', 'subscription_sharing_usage_unavailable', 'permission_denied', 'cancelled']) test(`${code} remains terminal`, async () => {
+  bridge({ infer: async () => ({ ok: false, error: { code, message: code } }) });
+  const attempts = [];
+  await assert.rejects(runWithFallback({ entries: [{ id: 'plan' }, { id: 'backup' }], store: new Map(), rateLimitPolicy: 'next', attempt: async entry => {
+    attempts.push(entry.id); return callChatGPT('', []);
+  } }));
+  assert.deepEqual(attempts, ['plan']);
+});
+
+test('actual default model and rejected request status reach renderer telemetry', async () => {
+  const models = [], statuses = [];
+  const mock = bridge({ infer: async () => ({ ok: true, value: { model: 'resolved-model', result: { rawText: 'answer' } } }) });
+  await callChatGPT('', [], { onModel: model => models.push(model) });
+  assert.deepEqual(models, ['resolved-model']);
+  let listener;
+  mock.api.onEvent = fn => { listener = fn; return () => {}; };
+  mock.api.infer = async id => {
+    listener({ id, type: 'request', status: 429 });
+    return { ok: false, error: { code: 'subscription_sharing_usage_limit_exceeded' } };
+  };
+  await assert.rejects(callChatGPT('', [], { onRequest: status => statuses.push(status) }));
+  assert.deepEqual(statuses, [429]);
+});

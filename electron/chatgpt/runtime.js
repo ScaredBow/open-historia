@@ -27,7 +27,8 @@ export function createRuntime({ vault, oauth, fetchImpl = fetch }) {
     try { return await serial(async () => { await load(); return task(); }); }
     finally { changing = false; }
   };
-  const credentials = async profileId => serial(async () => {
+  const credentials = async (profileId, signal) => serial(async () => {
+    signal.throwIfAborted();
     await load();
     const profile = profileById(profileId);
     if (!profile.tokens) throw new ChatGPTError('sign_in_required');
@@ -38,7 +39,7 @@ export function createRuntime({ vault, oauth, fetchImpl = fetch }) {
         if (profile.tokens.expiresAt <= Date.now()) throw new ChatGPTError('service_unavailable');
       } else {
         try {
-          const updated = await oauth.refresh(profile, async pending => { profile.pendingRefresh = pending; await save(); });
+          const updated = await oauth.refresh(profile, async pending => { profile.pendingRefresh = pending; await save(); }, signal);
           Object.assign(profile, updated); await save();
         } catch (error) {
           if (['sign_in_required', 'invalid_identity'].includes(error.code)) {
@@ -57,7 +58,7 @@ export function createRuntime({ vault, oauth, fetchImpl = fetch }) {
     if (changing) throw new ChatGPTError('busy');
     const controller = new AbortController(); running.add(controller);
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15 * 60_000), ...(callerSignal ? [callerSignal] : [])]);
-    try { const access = await credentials(profileId); signal.throwIfAborted(); return await task(access, signal); }
+    try { const access = await credentials(profileId, signal); signal.throwIfAborted(); return await task(access, signal); }
     finally { running.delete(controller); }
   };
   const modelsWith = async (access, signal) => {
@@ -99,8 +100,9 @@ export function createRuntime({ vault, oauth, fetchImpl = fetch }) {
       const model = request.model || models[0]?.slug;
       if (!model || !models.some(item => item.slug === model)) throw new ChatGPTError('model_unavailable');
       const body = buildRequest(request, model);
-      const response = await apiRequest('responses', access, { fetchImpl, signal: requestSignal, body });
-      onEvent({ type: 'request', status: response.status, model });
+      const response = await apiRequest('responses', access, { fetchImpl, signal: requestSignal, body,
+        onResponse: response => onEvent({ type: 'request', status: response.status, model }),
+      });
       const completed = await consumeResponse(response, onEvent);
       return { result: gameResult(completed, request.tool?.name), model, usage: completed.usage };
     }),

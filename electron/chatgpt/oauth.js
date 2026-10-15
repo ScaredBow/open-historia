@@ -113,6 +113,7 @@ export function createOAuth({ fetchImpl = fetch, openBrowser, verifyToken } = {}
           scope: 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct',
           resource: RESOURCE, state, nonce, code_challenge_method: 'S256',
           code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+          ...(profile.clientId && !profile.scopes?.includes('chatgpt.tokens.use.direct') ? { prompt: 'consent' } : {}),
           ...(profile.tokens?.id ? { id_token_hint: profile.tokens.id } : {}),
           ...(profile.identity?.email ? { login_hint: profile.identity.email } : {}),
         }).toString();
@@ -127,14 +128,16 @@ export function createOAuth({ fetchImpl = fetch, openBrowser, verifyToken } = {}
         return await validated(data, registered, nonce);
       } finally { listener.close(); }
     },
-    async refresh(profile, checkpoint) {
+    async refresh(profile, checkpoint, callerSignal) {
+      const signal = AbortSignal.any([AbortSignal.timeout(60000), ...(callerSignal ? [callerSignal] : [])]);
+      signal.throwIfAborted();
       // Persist received rotation before verifying identity; a JWKS outage must
       // not discard the only valid successor refresh token. It is never used
       // for inference until validation succeeds, including after a restart.
       let pending = profile.pendingRefresh;
       if (!pending) {
         if (!profile.tokens?.refresh) throw new ChatGPTError('sign_in_required');
-        pending = { data: await tokenRequest({ grant_type: 'refresh_token', client_id: profile.clientId, refresh_token: profile.tokens.refresh }, AbortSignal.timeout(60000)), receivedAt: Date.now() };
+        pending = { data: await tokenRequest({ grant_type: 'refresh_token', client_id: profile.clientId, refresh_token: profile.tokens.refresh }, signal), receivedAt: Date.now() };
         await checkpoint(pending);
       }
       return validated(pending.data, profile, undefined, pending.receivedAt);

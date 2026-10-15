@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile, rename, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
@@ -8,7 +8,7 @@ import { generateKeyPair, SignJWT } from 'jose';
 import { callbackListener, createOAuth, verifyIdentity, ISSUER } from '../electron/chatgpt/oauth.js';
 import { createVault } from '../electron/chatgpt/vault.js';
 import { createRuntime } from '../electron/chatgpt/runtime.js';
-import { ChatGPTError, safeError } from '../electron/chatgpt/errors.js';
+import { ChatGPTError, safeError, responseError } from '../electron/chatgpt/errors.js';
 import { buildRequest, consumeResponse, gameResult } from '../electron/chatgpt/inference.js';
 import { trustedSender, attachChatGPT } from '../electron/chatgpt/ipc.js';
 import { EventEmitter } from 'node:events';
@@ -132,7 +132,11 @@ test('request conversion preserves tool history and pins streaming/storage polic
   assert.equal(body.store, false); assert.equal(body.stream, true);
   assert.equal(Object.hasOwn(body, 'max_output_tokens'), false);
   assert.equal(body.input[0].call_id, body.input[1].call_id);
-  assert.equal(body.tools.length, 1); assert.deepEqual(body.tool_choice, { type: 'function', name: 'answer' });
+  assert.equal(body.tools.length, 1); assert.equal(body.tools[0].type, 'namespace');
+  assert.equal(body.tools[0].name, 'open_historia');
+  assert.deepEqual(body.tools[0].tools.map(tool => tool.name), ['answer']);
+  assert.equal(body.tool_choice, 'required'); assert.equal(body.parallel_tool_calls, false);
+  assert.equal(body.input[0].namespace, 'open_historia');
 });
 
 test('stream requires completion and rejects interrupted, incomplete, malformed and late limit failures', async () => {
@@ -254,4 +258,124 @@ test('a failed initial host write cannot let sign-in start with an unpersisted h
   await assert.rejects(runtime.snapshot(), { code: 'storage_unavailable' });
   await assert.rejects(runtime.signIn(), { code: 'storage_unavailable' });
   assert.equal(writes, 2); assert.equal(browserOpened, false);
+});
+
+const terminalRefreshCodes = ['invalid_grant', 'invalid_refresh_token', 'token_expired', 'refresh_token_expired', 'refresh_token_invalidated', 'refresh_token_reused'];
+for (const code of terminalRefreshCodes) test(`refresh ${code} clears credentials and retains registration`, async () => {
+  const oauth = createOAuth({ fetchImpl: async () => new Response(JSON.stringify({ error: code }), { status: 400 }) });
+  const { runtime, read, vault } = fixture({ oauth });
+  const state = read(); state.profiles[0].tokens.expiresAt = 1; await vault.write(state);
+  await assert.rejects(runtime.models('p1'), { code: 'sign_in_required' });
+  assert.equal(read().profiles[0].tokens, undefined);
+  assert.equal(read().profiles[0].clientId, 'issued-1');
+  assert.equal((await runtime.snapshot()).profiles[0].status, 'disconnected');
+});
+
+test('permission, eligibility, configuration and transient errors have distinct recovery', () => {
+  for (const code of ['subscription_sharing_user_not_eligible', 'subscription_sharing_route_not_supported', 'subscription_sharing_unsupported_capability', 'invalid_client']) {
+    assert.equal(responseError(code, 403).code, code);
+  }
+  for (const code of ['chatpass_v2_scope_not_authorized', 'chatpass_v2_invalid_authorization_context']) {
+    assert.equal(responseError(code, 403).code, 'authorization_context_invalid');
+  }
+  assert.equal(responseError(undefined, 403).code, 'permission_denied');
+  assert.equal(responseError('subscription_sharing_user_unavailable', 503).code, 'service_unavailable');
+  assert.equal(responseError('subscription_sharing_usage_unavailable', 503).code, 'subscription_sharing_usage_unavailable');
+});
+
+for (const sharing of [true, false]) test(`returning OAuth requests consent only when plan permission is missing (${sharing})`, async () => {
+  const p = profile(); if (!sharing) p.scopes = ['openid'];
+  const oauth = createOAuth({ openBrowser: async url => {
+    const auth = new URL(url);
+    assert.equal(auth.searchParams.get('prompt'), sharing ? null : 'consent');
+    assert.equal(auth.searchParams.get('client_id'), p.clientId);
+    assert.ok(auth.searchParams.get('scope').includes('chatgpt.tokens.use.direct'));
+    await fetch(`${auth.searchParams.get('redirect_uri')}?${new URLSearchParams({ state: auth.searchParams.get('state'), error: 'access_denied' })}`);
+  } });
+  await assert.rejects(oauth.signIn(p, 'host', new AbortController().signal, async () => {}), { code: 'access_denied' });
+});
+
+for (const action of ['cancel', 'select', 'disconnect', 'close']) test(`${action} interrupts token refresh and releases the mutation queue`, { timeout: 2000 }, async () => {
+  let started;
+  const began = new Promise(resolve => { started = resolve; });
+  const oauth = createOAuth({ fetchImpl: async (_url, { signal }) => {
+    started(); return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  } });
+  oauth.revoke = async () => true;
+  const { runtime, read, vault } = fixture({ oauth });
+  const state = read(); state.profiles[0].tokens.expiresAt = 1; await vault.write(state);
+  const controller = new AbortController();
+  const rejected = assert.rejects(runtime.models('p1', controller.signal), { name: 'AbortError' });
+  await began;
+  if (action === 'cancel') controller.abort();
+  else if (action === 'close') runtime.close();
+  else await runtime[action]('p1');
+  await rejected;
+  assert.equal((await runtime.snapshot()).profiles[0].status, action === 'disconnect' ? 'disconnected' : 'connected');
+});
+
+test('received rotation is checkpointed even if cancellation arrives before validation', async () => {
+  const controller = new AbortController(); let saved;
+  const oauth = createOAuth({ fetchImpl: async () => {
+    controller.abort();
+    return json({ access_token: 'new', refresh_token: 'rotated', token_type: 'Bearer', id_token: 'id', expires_in: 3600 });
+  }, verifyToken: async () => { throw new ChatGPTError('network'); } });
+  await assert.rejects(oauth.refresh(profile(), async pending => { saved = pending; }, controller.signal), { code: 'network' });
+  assert.equal(saved.data.refresh_token, 'rotated');
+});
+
+for (const status of [401, 403, 429, 503]) test(`rejected Responses HTTP ${status} reaches request telemetry`, async () => {
+  const events = [];
+  const { runtime } = fixture({ fetchImpl: async url => url.endsWith('/models')
+    ? json({ models: [{ slug: 'allowed', visibility: 'list' }] })
+    : new Response('{}', { status }) });
+  await assert.rejects(runtime.infer({ profileId: 'p1', history: [], systemPrompt: '' }, event => events.push(event)));
+  assert.deepEqual(events, [{ type: 'request', status, model: 'allowed' }]);
+});
+
+test('missing SSE content type is allowed, incompatible types and incomplete bodies are rejected', async () => {
+  const response = sse([completed]); response.headers.delete('content-type');
+  assert.equal((await consumeResponse(response)).status, 'completed');
+  const bad = sse([completed]); bad.headers.set('content-type', 'application/json');
+  await assert.rejects(consumeResponse(bad), { code: 'incomplete' });
+  const truncated = sse([{ type: 'response.output_text.delta', delta: 'partial' }]); truncated.headers.delete('content-type');
+  await assert.rejects(consumeResponse(truncated), { code: 'incomplete' });
+});
+
+test('namespaced lookup calls replay their namespace without requiring reasoning output', async () => {
+  const { appendLookupRound } = await import('../src/Game/AI/toolTurns.js');
+  const output = [{ type: 'function_call', namespace: 'open_historia', name: 'lookup', call_id: 'call_1', arguments: '{"q":"x"}' }];
+  const result = gameResult({ output }, 'answer');
+  const history = appendLookupRound([], result.lookupCalls, [{ id: 'call_1', name: 'lookup', response: { found: true } }]);
+  const body = buildRequest({ systemPrompt: '', history, tool: { name: 'answer', schema: {} }, lookupTools: [{ name: 'lookup', schema: {} }] }, 'model');
+  assert.deepEqual(body.input[0], output[0]);
+  assert.deepEqual(body.tools[0].tools.map(tool => tool.name), ['answer', 'lookup']);
+  assert.equal(body.input[1].call_id, 'call_1');
+});
+
+test('vault replaces existing files, retries Windows locks, and preserves the old vault on failure', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'oh-vault-replace-'));
+  // Encryption behavior is covered separately; this test isolates filesystem replacement.
+  const storage = { isEncryptionAvailable: () => true, encryptString: value => Buffer.from(value), decryptString: value => value.toString() };
+  try {
+    const vault = createVault(directory, storage), state = await vault.read();
+    await vault.write(state); state.profiles = [profile()]; await vault.write(state);
+    state.profiles[0].tokens.refresh = 'rotated'; await vault.write(state);
+    assert.deepEqual(await vault.read(), state);
+    let attempts = 0;
+    const retrying = createVault(directory, storage, { platform: 'win32', wait: async () => {}, renameFile: async (...args) => {
+      if (++attempts < 3) throw Object.assign(new Error('locked'), { code: 'EPERM' });
+      await rename(...args);
+    } });
+    delete state.profiles[0].tokens; await retrying.write(state);
+    assert.equal(attempts, 3); assert.deepEqual(await vault.read(), state);
+    const bytes = await readFile(join(directory, 'accounts.enc')); attempts = 0;
+    const locked = createVault(directory, storage, { platform: 'win32', wait: async () => {}, renameFile: async () => {
+      attempts++; throw Object.assign(new Error('locked'), { code: 'EACCES' });
+    } });
+    await assert.rejects(locked.write({ ...state, profiles: [] }), { code: 'EACCES' });
+    assert.equal(attempts, 5);
+    assert.deepEqual(await readFile(join(directory, 'accounts.enc')), bytes);
+    assert.deepEqual(await readdir(directory), ['accounts.enc']);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { unwrap } from './chatgptClient.js';
-import { updateConnection, entriesUsingConnection, updateEntry, resetEntryState } from '../Game/AI/providerConfig.js';
+import { updateConnection, entriesUsingConnection, updateEntry } from '../Game/AI/providerConfig.js';
+
+import { bindChatGPTProfile, selectedChatGPTModel } from './chatgptConnectionState.js';
 
 const button = { background: '#fff', color: '#111', border: '1px solid #888', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', font: 'inherit' };
 const select = { width: '100%', padding: 9, borderRadius: 6, background: '#222', color: '#fff', margin: '8px 0' };
@@ -39,12 +41,10 @@ export default function ChatGPTConnection({ connection }) {
     catch (error) { setFailed(true); setMessage(error.message); }
     finally { setBusy(false); setSigningIn(false); }
   };
-  const bind = profileId => {
-    updateConnection(connection.id, { chatgptProfileId: profileId });
-    for (const entry of entriesUsingConnection(connection.id)) {
-      updateEntry(entry.id, { model: '' }); resetEntryState(entry.id);
-    }
-  };
+  const bind = profileId => bindChatGPTProfile(connection.id, profileId);
+  const entries = entriesUsingConnection(connection.id);
+  const selectedModel = selectedChatGPTModel(connection, entries);
+  const mixedModels = new Set(entries.map(entry => entry.model || '')).size > 1;
   const signIn = newProfile => run(async () => {
     setSigningIn(true);
     const signed = await unwrap(bridge.signIn(newProfile ? undefined : id, newProfile));
@@ -75,12 +75,13 @@ export default function ChatGPTConnection({ connection }) {
     </div>
     {profile?.sharing && <>
       <label>Available model
-        <select aria-label="ChatGPT model" style={select} disabled={busy || !models.length} defaultValue="" key={`${id}:${models.map(item => item.slug).join(',')}`} onChange={event => {
+        <select aria-label="ChatGPT model" style={select} disabled={busy || !models.length} value={selectedModel} onChange={event => {
           for (const entry of entriesUsingConnection(connection.id)) updateEntry(entry.id, { model: event.target.value });
           updateConnection(connection.id, { suggestedModel: event.target.value });
           setMessage('Model selected for this connection’s entries.'); setFailed(false);
         }}>
-          <option value="" disabled>Choose a model (blank entries use the first available)</option>
+          <option value="" disabled>{mixedModels ? 'Multiple models selected in entries' : 'Automatic (first available model)'}</option>
+          {selectedModel && !models.some(model => model.slug === selectedModel) && <option value={selectedModel} disabled>{selectedModel} (unavailable)</option>}
           {models.map(model => <option key={model.slug} value={model.slug}>{model.name}</option>)}
         </select>
       </label>
