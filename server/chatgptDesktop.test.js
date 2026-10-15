@@ -128,8 +128,9 @@ test('request conversion preserves tool history and pins streaming/storage polic
   const body = buildRequest({ systemPrompt: 'system', history: [
     { role: 'model', parts: [{ functionCall: { id: 'call-1', name: 'lookup', args: { q: 1 } } }] },
     { role: 'user', parts: [{ functionResponse: { id: 'call-1', response: { answer: 2 } } }] },
-  ], tool: { name: 'answer', schema: { type: 'object' } }, requireOutputTool: true, lookupTools: [{ name: 'lookup', schema: {} }], store: true, stream: false }, 'allowed');
+  ], tool: { name: 'answer', schema: { type: 'object' } }, requireOutputTool: true, lookupTools: [{ name: 'lookup', schema: {} }], store: true, stream: false, maxTokens: 4096 }, 'allowed');
   assert.equal(body.store, false); assert.equal(body.stream, true);
+  assert.equal(Object.hasOwn(body, 'max_output_tokens'), false);
   assert.equal(body.input[0].call_id, body.input[1].call_id);
   assert.equal(body.tools.length, 1); assert.deepEqual(body.tool_choice, { type: 'function', name: 'answer' });
 });

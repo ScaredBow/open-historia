@@ -43,7 +43,8 @@ export function buildRequest(request, model) {
   return {
     model, instructions: request.systemPrompt, input, store: false, stream: true, include: ["reasoning.encrypted_content"],
     ...(tools.length ? { tools, tool_choice: request.requireOutputTool && request.tool ? { type: 'function', name: request.tool.name } : 'required', parallel_tool_calls: !request.requireOutputTool } : {}),
-    ...(Number.isInteger(request.maxTokens) && request.maxTokens > 0 ? { max_output_tokens: request.maxTokens } : {}),
+    // ChatGPT plan usage rejects max_output_tokens, even when an API-key
+    // provider's saved settings include a positive maxTokens value.
   };
 }
 
