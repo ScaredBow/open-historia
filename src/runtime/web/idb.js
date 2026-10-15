@@ -144,3 +144,17 @@ export const kvUpdate = (key, updater, fallback = null) =>
     await promisifyRequest(store.put({ key, value: next }));
     return next;
   });
+
+// Apple Clip -> containing app migration, committed across all stores or not at
+// all. Compiled only into the Apple adapter's call graph; no website behavior.
+export const idbImportEmpty = (records) => runTx(Object.values(STORES), "readwrite", async (tx) => {
+  const counts = await Promise.all(Object.values(STORES).map(name => promisifyRequest(tx.objectStore(name).count())));
+  if (counts.some(Boolean)) return false;
+  for (const name of Object.values(STORES)) {
+    if (!Array.isArray(records[name])) throw new Error("Invalid save transfer");
+    for (const record of records[name]) await promisifyRequest(tx.objectStore(name).put(record));
+  }
+  return true;
+});
+
+export const idbSnapshot = () => runTx(Object.values(STORES), "readonly", async tx => Object.fromEntries(await Promise.all(Object.values(STORES).map(async name => [name, await promisifyRequest(tx.objectStore(name).getAll())]))));

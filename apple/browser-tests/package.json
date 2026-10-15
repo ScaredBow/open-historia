@@ -1,0 +1,7 @@
+{
+  "name": "open-historia-apple-browser-tests",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node smoke.mjs" },
+  "devDependencies": { "playwright-core": "1.64.1" }
+}

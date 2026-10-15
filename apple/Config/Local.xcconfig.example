@@ -1,0 +1,5 @@
+DEVELOPMENT_TEAM = YOURTEAMID
+HISTORIA_BUNDLE_ID = your.registered.bundle
+HISTORIA_APP_GROUP = group.your.registered.bundle
+HISTORIA_DOMAIN = your-app-clip-domain.example
+HISTORIA_STORE_ID = YOUR_NUMERIC_APP_STORE_ID

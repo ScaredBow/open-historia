@@ -396,7 +396,7 @@ const Toggle = ({ label, enabled, onToggle }) => {
 };
 
 // The desktop account UI is eliminated from web and Android builds.
-const ChatGPTConnection = !import.meta.env.VITE_OH_WEB
+const ChatGPTConnection = (!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE)
     ? React.lazy(() => import("../../desktop/ChatGPTConnection.jsx")) : null;
 
 const ApiProviderSelector = ({ provider, onProviderChange }) => {
@@ -772,7 +772,7 @@ const ConnectionFields = ({ connection, sharedBy = 1 }) => {
                 : "Base URL of a self-hosted proxy that speaks the Anthropic Messages API (POST /messages)."}
             />
         )}
-        {!import.meta.env.VITE_OH_WEB && connection.provider === "chatgpt" ? (
+        {(!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE) && connection.provider === "chatgpt" ? (
             <React.Suspense fallback={<p>Loading ChatGPT connection…</p>}>
                 <ChatGPTConnection connection={connection} />
             </React.Suspense>
@@ -1028,7 +1028,7 @@ const ConnectionsSection = () => {
                 <div style={{ fontSize: "0.82rem", fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{connectionDisplayName(connection)}</div>
                 <div style={{ ...helperStyle, marginTop: "0.1rem" }}>
                 {getProviderMeta(connection.provider).label}
-                {selfHosted ? ` · ${connection.endpoint || "no endpoint"}` : ` · key ${connection.apiKey.trim() ? "set" : "not set"}`}
+                {(!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE) && connection.provider === "chatgpt" ? " · account sign-in" : selfHosted ? ` · ${connection.endpoint || "no endpoint"}` : ` · key ${connection.apiKey.trim() ? "set" : "not set"}`}
                 {` · used by ${using} entr${using === 1 ? "y" : "ies"}`}
                 </div>
                 </div>

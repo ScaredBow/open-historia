@@ -45,11 +45,17 @@ export const installWebBackend = async () => {
   // native splash comes down the moment the WebView has a document, and a white
   // gap where it was is most of the difference between an app and a web page in a
   // shell. Everything after this point is the same on both.
-  const boot = isNativeApp() ? showNativeBoot({ local: Boolean(import.meta.env.VITE_OH_NATIVE) }) : null;
+  const native = import.meta.env.VITE_OH_APPLE || isNativeApp();
+  const boot = native ? showNativeBoot({ local: Boolean(import.meta.env.VITE_OH_NATIVE) }) : null;
 
   // Saves this browser holds under the site's http address come across first,
   // so the library below already has them (saveMove.js). Never in the app.
-  if (!isNativeApp()) await bringHttpSavesAcross({ db: idb });
+  if (!native) await bringHttpSavesAcross({ db: idb });
+
+  if (import.meta.env.VITE_OH_APPLE) {
+    const { installAppleSaves } = await import("../../apple/saves.js");
+    await installAppleSaves();
+  }
 
   // Seed the default scenario before any /api call, then intercept.
   try {

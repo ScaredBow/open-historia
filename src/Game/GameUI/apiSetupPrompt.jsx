@@ -142,13 +142,13 @@ const TutorialVideo = () => {
   );
 };
 
-const ChatGPTQuickSetup = !import.meta.env.VITE_OH_WEB
+const ChatGPTQuickSetup = (!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE)
   ? React.lazy(() => import("../../desktop/ChatGPTQuickSetup.jsx")) : null;
 
 const groupedProviders = () => {
   const groups = new Map();
   for (const option of PROVIDER_OPTIONS) {
-    if (option.value === "chatgpt") continue; // Dedicated desktop sign-in above the key form.
+    if (option.value === "chatgpt") continue; // Dedicated native sign-in above the key form.
     const name = option.group || "Providers";
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(option);
@@ -251,7 +251,7 @@ export const ApiSetupPrompt = ({ providerLabel = "the selected provider", missin
           Until it is set, time skips fall back to canned events and the advisor cannot answer. Paste your details below and you are ready to play.
         </div>
 
-        {!import.meta.env.VITE_OH_WEB && window.ohChatGPT && (
+        {(!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE) && window.ohChatGPT && (
           <React.Suspense fallback={<p>Loading ChatGPT sign-in…</p>}>
             <ChatGPTQuickSetup onSaved={onSaved} />
           </React.Suspense>

@@ -2240,7 +2240,7 @@ async function callAnthropicCompatible(systemPrompt, history, {
 }
 
 function dispatchToProvider(provider, systemPrompt, history, providerOpts) {
-    if (!import.meta.env.VITE_OH_WEB && provider === "chatgpt") {
+    if ((!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE) && provider === "chatgpt") {
         return import("../../desktop/chatgptClient.js").then(({ callChatGPT }) => callChatGPT(systemPrompt, history, providerOpts));
     }
     switch (provider) {
