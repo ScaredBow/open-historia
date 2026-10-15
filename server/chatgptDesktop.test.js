@@ -373,9 +373,81 @@ test('vault replaces existing files, retries Windows locks, and preserves the ol
     const locked = createVault(directory, storage, { platform: 'win32', wait: async () => {}, renameFile: async () => {
       attempts++; throw Object.assign(new Error('locked'), { code: 'EACCES' });
     } });
-    await assert.rejects(locked.write({ ...state, profiles: [] }), { code: 'EACCES' });
+    await assert.rejects(locked.write({ ...state, profiles: [] }), { code: 'storage_write_failed' });
     assert.equal(attempts, 5);
     assert.deepEqual(await readFile(join(directory, 'accounts.enc')), bytes);
     assert.deepEqual(await readdir(directory), ['accounts.enc']);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('unclassified main-process failures stay terminal through IPC and the fallback runner', async () => {
+  const { callChatGPT } = await import('../src/desktop/chatgptClient.js');
+  const { runWithFallback } = await import('../src/Game/AI/fallbackRunner.js');
+  const frame = { url: 'http://localhost:3000/' };
+  const contents = Object.assign(new EventEmitter(), { mainFrame: frame, send() {} });
+  const appWindow = Object.assign(new EventEmitter(), { webContents: contents, isDestroyed: () => false });
+  const handlers = new Map(); let failure;
+  attachChatGPT({ ipcMain: { handle: (name, handler) => handlers.set(name, handler), removeHandler: name => handlers.delete(name) }, window: appWindow,
+    runtime: { infer: async () => { throw failure; }, close() {} }, origin: 'http://localhost:3000' });
+  const before = globalThis.window;
+  globalThis.window = { ohChatGPT: {
+    onEvent: () => () => {},
+    infer: (id, request) => handlers.get('chatgpt:infer')({ sender: contents, senderFrame: frame }, id, request),
+  } };
+  try {
+    for (failure of [new Error('secret'), new TypeError('secret bug'), Object.assign(new Error('secret path'), { code: 'EACCES' }), new ChatGPTError('storage_write_failed')]) {
+      let paid = false;
+      await assert.rejects(runWithFallback({ entries: [{ id: 'plan' }, { id: 'paid' }], store: new Map(), attempt: async entry => {
+        if (entry.id === 'paid') { paid = true; return 'paid'; }
+        return callChatGPT('', [], { entrySettings: { chatgptProfileId: 'p1' } });
+      } }), error => {
+        assert.equal(error.code, failure instanceof ChatGPTError ? 'storage_write_failed' : 'internal_error');
+        assert.equal(error.message.includes('secret'), false); return true;
+      });
+      assert.equal(paid, false);
+    }
+  } finally { globalThis.window = before; appWindow.emit('closed'); }
+});
+
+test('HTTP transport failures are classified explicitly; bugs, malformed data and aborts are not network failures', async () => {
+  for (const code of ['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'UND_ERR_CONNECT_TIMEOUT']) {
+    const { runtime } = fixture({ fetchImpl: async () => { throw new TypeError('fetch failed', { cause: { code } }); } });
+    await assert.rejects(runtime.models('p1'), { code: 'network' });
+  }
+  for (const failure of [new Error('bug'), new TypeError('invalid argument'), new DOMException('cancelled', 'AbortError')]) {
+    const { runtime } = fixture({ fetchImpl: async () => { throw failure; } });
+    await assert.rejects(runtime.models('p1'), error => {
+      assert.equal(safeError(error).code, failure.name === 'AbortError' ? 'cancelled' : 'internal_error'); return true;
+    });
+  }
+  const { runtime } = fixture({ fetchImpl: async () => new Response('malformed', { headers: { 'content-type': 'application/json' } }) });
+  await assert.rejects(runtime.models('p1'), error => { assert.equal(safeError(error).code, 'internal_error'); return true; });
+});
+
+test('refresh transport failure preserves credentials but unexpected identity verification errors stay terminal', async () => {
+  const oauth = createOAuth({ fetchImpl: async () => { throw new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }); } });
+  const { runtime, read, vault } = fixture({ oauth });
+  const state = read(); state.profiles[0].tokens.expiresAt = 1; await vault.write(state);
+  await assert.rejects(runtime.models('p1'), { code: 'network' });
+  assert.equal(read().profiles[0].tokens.refresh, 'secret-refresh');
+  const { privateKey } = await generateKeyPair('RS256');
+  const token = await new SignJWT({ sub: 'u1' }).setProtectedHeader({ alg: 'RS256' }).setIssuer(ISSUER).setAudience('issued-1').setIssuedAt().setExpirationTime('5m').sign(privateKey);
+  await assert.rejects(verifyIdentity(token, async () => { throw new Error('unexpected'); }, 'issued-1'), error => {
+    assert.equal(safeError(error).code, 'internal_error'); return true;
+  });
+});
+
+test('vault directory and encryption failures are sanitized persistence errors', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'oh-vault-errors-'));
+  const storage = { isEncryptionAvailable: () => true, encryptString: value => Buffer.from(value), decryptString: value => value.toString() };
+  try {
+    const vault = createVault(directory, storage), state = await vault.read(); await vault.write(state);
+    const bytes = await readFile(join(directory, 'accounts.enc'));
+    const broken = createVault(directory, { ...storage, encryptString: () => { throw new Error('secret platform error'); } });
+    await assert.rejects(broken.write(state), { code: 'storage_write_failed' });
+    assert.deepEqual(await readFile(join(directory, 'accounts.enc')), bytes);
+    assert.deepEqual(await readdir(directory), ['accounts.enc']);
+    const invalidDirectory = join(directory, 'not-a-directory'); await writeFile(invalidDirectory, 'file');
+    await assert.rejects(createVault(invalidDirectory, storage).write(state), { code: 'storage_write_failed' });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

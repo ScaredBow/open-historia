@@ -26,10 +26,10 @@ export function createVault(directory, safeStorage, { platform = process.platfor
       } catch { throw new ChatGPTError('storage_invalid'); }
     },
     async write(state) {
-      requireKey();
-      await mkdir(directory, { recursive: true, mode: 0o700 });
       const temporary = `${file}.${randomUUID()}.tmp`;
       try {
+        requireKey();
+        await mkdir(directory, { recursive: true, mode: 0o700 });
         const handle = await open(temporary, 'wx', 0o600);
         try { await handle.writeFile(safeStorage.encryptString(JSON.stringify(state))); await handle.sync(); }
         finally { await handle.close(); }
@@ -42,7 +42,10 @@ export function createVault(directory, safeStorage, { platform = process.platfor
             await wait(50 * 2 ** attempt);
           }
         }
-      } finally { await unlink(temporary).catch(() => {}); }
+      } catch (error) {
+        throw error instanceof ChatGPTError ? error : new ChatGPTError('storage_write_failed');
+      }
+      finally { await unlink(temporary).catch(() => {}); }
     },
   };
 }

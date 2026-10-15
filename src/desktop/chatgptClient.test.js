@@ -70,3 +70,20 @@ test('actual default model and rejected request status reach renderer telemetry'
   await assert.rejects(callChatGPT('', [], { onRequest: status => statuses.push(status) }));
   assert.deepEqual(statuses, [429]);
 });
+
+test('a temporarily unavailable model returns to the front after the bounded busy period', async () => {
+  let available = false, now = 1000;
+  bridge({ infer: async () => available
+    ? { ok: true, value: { result: { rawText: 'plan answer' } } }
+    : { ok: false, error: { code: 'model_unavailable', message: 'Refresh models' } } });
+  const store = new Map(), attempts = [];
+  const run = () => runWithFallback({ entries: [{ id: 'plan' }, { id: 'backup' }], store, now: () => now, attempt: async entry => {
+    attempts.push(entry.id); return entry.id === 'backup' ? 'backup answer' : callChatGPT('', []);
+  } });
+  assert.equal((await run()).result, 'backup answer');
+  assert.equal(store.get('plan').unusable, undefined);
+  assert.ok(Number.isFinite(store.get('plan').skipUntil));
+  available = true; now = store.get('plan').skipUntil + 1; attempts.length = 0;
+  assert.equal((await run()).result, 'plan answer');
+  assert.deepEqual(attempts, ['plan']);
+});

@@ -3,6 +3,8 @@ const messages = {
   cancelled: 'ChatGPT request cancelled.',
   busy: 'Finish the current ChatGPT account change first.',
   storage_unavailable: 'Unlock your operating system credential store to use ChatGPT sign-in.',
+  storage_write_failed: 'Could not save the ChatGPT connection. Check disk space, file permissions, and your operating system credential store, then try again.',
+  internal_error: 'The desktop ChatGPT connection encountered an unexpected error. Please restart the app and try again.',
   storage_invalid: 'The saved ChatGPT connection could not be read. Unlock the credential store and restart; your saved file has been preserved.',
   sign_in_required: 'Sign in with ChatGPT in Settings to continue.',
   sharing_not_enabled: 'Allow ChatGPT plan usage for Open Historia in ChatGPT Settings, then reconnect.',
@@ -31,7 +33,7 @@ export class ChatGPTError extends Error {
   }
 }
 export function safeError(error) {
-  const safe = error instanceof ChatGPTError ? error : new ChatGPTError(error?.name === 'AbortError' || error?.name === 'TimeoutError' ? 'cancelled' : 'network');
+  const safe = error instanceof ChatGPTError ? error : new ChatGPTError(error?.name === 'AbortError' || error?.name === 'TimeoutError' ? 'cancelled' : 'internal_error');
   return { code: safe.code, message: safe.message, status: safe.status };
 }
 export function responseError(code, status) {
@@ -45,4 +47,19 @@ export function responseError(code, status) {
   if (status >= 500) return new ChatGPTError('service_unavailable', status);
   if (code === 'model_not_found' || status === 404) return new ChatGPTError('model_unavailable', status);
   return new ChatGPTError('invalid_request', status);
+}
+
+// Only transport failures from an HTTP operation may become recoverable network
+// errors. An arbitrary TypeError or filesystem error must remain terminal.
+export function transportError(error) {
+  const code = error?.cause?.code;
+  const networkCodes = ['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET'];
+  if (error instanceof TypeError && networkCodes.includes(code)) return new ChatGPTError('network');
+  if (error?.code === 'ERR_JWKS_TIMEOUT') return new ChatGPTError('network');
+  return error;
+}
+
+export async function fetchResponse(fetchImpl, url, options) {
+  try { return await fetchImpl(url, options); }
+  catch (error) { throw transportError(error); }
 }

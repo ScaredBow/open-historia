@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { ChatGPTError, responseError } from './errors.js';
+import { ChatGPTError, responseError, fetchResponse, transportError } from './errors.js';
 
 export const ISSUER = 'https://auth.openai.com';
 export const RESOURCE = 'https://api.openai.com/v1';
@@ -58,7 +58,7 @@ export async function verifyIdentity(token, keys, clientId, nonce, subject, rece
   } catch (error) {
     if (error.code === 'invalid_identity' || error.code?.startsWith('ERR_JWT') || error.code?.startsWith('ERR_JWS') || error.code === 'ERR_JOSE_ALG_NOT_ALLOWED') throw new ChatGPTError('invalid_identity');
     // A key-server outage must preserve the checkpointed rotating token.
-    throw new ChatGPTError('network');
+    throw transportError(error);
   }
 }
 
@@ -66,7 +66,7 @@ export function createOAuth({ fetchImpl = fetch, openBrowser, verifyToken } = {}
   let discovery, keys;
   const metadata = async () => {
     if (!discovery) {
-      const response = await fetchImpl(`${ISSUER}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(15000), redirect: 'error' });
+      const response = await fetchResponse(fetchImpl, `${ISSUER}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(15000), redirect: 'error' });
       if (!response.ok) throw new ChatGPTError('network');
       const data = await response.json();
       if (data.issuer !== ISSUER) throw new ChatGPTError('invalid_identity');
@@ -84,7 +84,7 @@ export function createOAuth({ fetchImpl = fetch, openBrowser, verifyToken } = {}
     return verifyIdentity(token, keys, clientId, nonce, subject, receivedAt);
   });
   const tokenRequest = async (params, signal) => {
-    const response = await fetchImpl(TOKEN_URL, { method: 'POST', body: new URLSearchParams({ ...params, resource: RESOURCE }), signal, redirect: 'error' });
+    const response = await fetchResponse(fetchImpl, TOKEN_URL, { method: 'POST', body: new URLSearchParams({ ...params, resource: RESOURCE }), signal, redirect: 'error' });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw responseError(data.error, response.status);
     if (typeof data.access_token !== 'string' || !data.access_token || data.token_type?.toLowerCase() !== 'bearer'
@@ -148,7 +148,7 @@ export function createOAuth({ fetchImpl = fetch, openBrowser, verifyToken } = {}
         const meta = await metadata();
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const response = await fetchImpl(meta.revocation_endpoint, {
+            const response = await fetchResponse(fetchImpl, meta.revocation_endpoint, {
               method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
               body: new URLSearchParams({ token: profile.pendingRefresh?.data.refresh_token || profile.tokens.refresh, token_type_hint: 'refresh_token', client_id: profile.clientId }),
             });

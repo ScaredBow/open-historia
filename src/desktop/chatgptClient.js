@@ -4,7 +4,7 @@ export async function unwrap(promise) {
     const error = new Error(response?.error?.message || 'ChatGPT desktop connection unavailable.');
     error.code = response?.error?.code;
     if (error.code === 'cancelled') error.name = 'AbortError';
-    const kind = { network: 'busy', service_unavailable: 'busy', rate_limited: 'rateLimited', model_unavailable: 'unusable' }[error.code];
+    const kind = { network: 'busy', service_unavailable: 'busy', rate_limited: 'rateLimited', model_unavailable: 'busy' }[error.code];
     if (kind) error.providerFailure = { kind, reason: error.message };
     // Only classified recoverable failures may use the configured Fallback list.
     // Plan limits never silently fall through to a paid API-key provider.

@@ -1,9 +1,9 @@
 import { RESOURCE } from './oauth.js';
-import { ChatGPTError, responseError } from './errors.js';
+import { ChatGPTError, responseError, fetchResponse } from './errors.js';
 
 // Endpoint, credential, storage and streaming policy are owned by main, never IPC.
 export async function apiRequest(path, access, { fetchImpl = fetch, signal, body, onResponse } = {}) {
-  const response = await fetchImpl(`${RESOURCE}/${path}`, {
+  const response = await fetchResponse(fetchImpl, `${RESOURCE}/${path}`, {
     method: body ? 'POST' : 'GET', redirect: 'error', signal,
     headers: { Authorization: `Bearer ${access}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
