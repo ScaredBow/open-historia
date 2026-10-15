@@ -29,8 +29,8 @@ import HistoriaCore
         let result: (String, String?) = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 callback = continuation
-                server.handler = { [weak self] request in
-                    guard self?.listener === server, self?.callback != nil else { throw PlanError("invalid_callback") }
+                server.handler = { [weak self, weak server] request in
+                    guard let server, self?.listener === server, self?.callback != nil else { throw PlanError("invalid_callback") }
                     let value: (code: String, client: String?)
                     do { value = try OAuthProtocol.callback(target: request.target, host: request.headers["host"] ?? "", expectedHost: "127.0.0.1:\(server.port)", state: state) } catch let error as PlanError where error.code == "access_denied" {
                         self?.finish(.failure(error))
@@ -43,8 +43,13 @@ import HistoriaCore
                 let url = OAuthProtocol.authorize(profile: profile, host: host, redirect: redirect, state: state, nonce: nonce, verifier: verifier)
                 // OpenAI requires an HTTP loopback callback. It is captured by
                 // NWListener independently; no code or token goes to a scheme.
-                let auth = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { [weak self] _, _ in
-                    Task { @MainActor in self?.cancel() }
+                let auth = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { [weak self, weak server] _, _ in
+                    Task { @MainActor in
+                        // A cancelled sheet may complete after a new sign-in
+                        // starts. Only its own attempt may be cancelled here.
+                        guard let server, self?.listener === server else { return }
+                        self?.cancel()
+                    }
                 }
                 auth.presentationContextProvider = self
                 auth.prefersEphemeralWebBrowserSession = true
