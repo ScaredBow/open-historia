@@ -20,7 +20,7 @@ test('typed save decoding rejects constructors and deeply nested payloads', asyn
 });
 test('native bridge exposes only named operations and isolates observer failures', async () => {
   const calls = [], sandbox = { window: { webkit: { messageHandlers: { historia: { postMessage: async value => { calls.push(value); return { ok: true, value: [] }; } } } } } };
-  vm.runInNewContext(fs.readFileSync(new URL('../../apple/Resources/bridge.js', import.meta.url), 'utf8').replace('__IS_CLIP__', 'true'), sandbox);
+  vm.runInNewContext(fs.readFileSync(new URL('../../apple/Resources/bridge.js', import.meta.url), 'utf8').replaceAll('__IS_CLIP__', 'true'), sandbox);
   const bridge = sandbox.window.ohChatGPT;
   assert.equal(Object.isFrozen(bridge), true);
   assert.equal(bridge.token, undefined); assert.equal(bridge.fetch, undefined);

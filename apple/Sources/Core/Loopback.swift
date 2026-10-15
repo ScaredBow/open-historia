@@ -43,19 +43,27 @@ public struct HTTPRequest {
         let listener = try NWListener(using: params)
         self.listener = listener
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            var resumed = false
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    guard !resumed, let port = listener.port else { return }; resumed = true
-                    self.port = port.rawValue; continuation.resume()
-                case .failed, .cancelled:
-                    guard !resumed else { return }; resumed = true; continuation.resume(throwing: PlanError("network"))
-                default: break
-                }
+            startContinuation = continuation
+            listener.stateUpdateHandler = { [weak self] state in
+                Task { @MainActor in self?.changed(state) }
             }
-            listener.newConnectionHandler = { connection in self.accept(connection) }
+            listener.newConnectionHandler = { [weak self] connection in
+                Task { @MainActor in self?.accept(connection) }
+            }
             listener.start(queue: .main)
+        }
+    }
+    private var startContinuation: CheckedContinuation<Void, Error>?
+    private func changed(_ state: NWListener.State) {
+        switch state {
+        case .ready:
+            guard let readyPort = listener?.port else { return }
+            port = readyPort.rawValue
+            let continuation = startContinuation; startContinuation = nil; continuation?.resume()
+        case .failed, .cancelled:
+            let continuation = startContinuation; startContinuation = nil
+            continuation?.resume(throwing: PlanError("network"))
+        default: break
         }
     }
     public var origin: String { "http://127.0.0.1:\(port)" }
@@ -85,7 +93,7 @@ public struct HTTPRequest {
         let header = "HTTP/1.1 \(status)\r\nContent-Type: \(mime)\r\nContent-Length: \(data.count)\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n"
         connection.send(content: Data(header.utf8) + data, completion: .contentProcessed { _ in connection.cancel(); self.connections.removeValue(forKey: id) })
     }
-    public func stop() { listener?.cancel(); listener = nil; for connection in connections.values { connection.cancel() }; connections.removeAll() }
+    public func stop() { handler = nil; listener?.cancel(); listener = nil; for connection in connections.values { connection.cancel() }; connections.removeAll() }
     public static func serve(_ request: HTTPRequest, root: URL) throws -> (String, Data) {
         let file = try request.file(under: root)
         let mime: String

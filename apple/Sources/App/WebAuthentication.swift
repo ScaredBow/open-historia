@@ -24,7 +24,7 @@ import HistoriaCore
     func authorize(profile: JSON, host: String, state: String, nonce: String, verifier: String) async throws -> (code: String, client: String?, redirect: String) {
         guard callback == nil else { throw PlanError("busy") }
         let server = LoopbackServer(); listener = server
-        try await server.start()
+        do { try await server.start() } catch { server.stop(); listener = nil; throw error }
         let redirect = server.origin + "/auth/callback"
         let result: (String, String?) = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in

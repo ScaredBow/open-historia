@@ -1,3 +1,4 @@
+/* global __IS_CLIP__ */
 (() => {
   'use strict';
   const listeners = new Set();
