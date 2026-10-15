@@ -502,15 +502,18 @@ app.get("/api/app-update", async (req, res) => {
     res.json({}); // unknown track -> no update info, never an error
     return;
   }
+  // This capability belongs to the running app, not the remote manifest or
+  // its cache. Include it even when GitHub is offline or returns an error.
+  const reply = (data = {}) => res.json({ ...data, autoUpdate: Boolean(desktopUpdater()) });
   const cached = appUpdateCache.get(track);
   if (cached && Date.now() - cached.at < APP_UPDATE_TTL_MS) {
-    res.json(cached.data);
+    reply(cached.data);
     return;
   }
   try {
     const response = await fetch(manifestUrl, { signal: AbortSignal.timeout(6000) });
     if (!response.ok) {
-      res.json(cached ? cached.data : {}); // stale-if-error, else empty
+      reply(cached ? cached.data : {}); // stale-if-error, else empty
       return;
     }
     const raw = await response.json();
@@ -527,15 +530,11 @@ app.get("/api/app-update", async (req, res) => {
       // localhost page — and it is absent everywhere else, so no banner appears.
       current: String(process.env.OH_DESKTOP_BUILD || ""),
       download: str(raw && raw[{ win32: "windows", darwin: "mac", linux: "linux" }[process.platform]]),
-      // True when this app can install the update itself. False on a build that
-      // cannot (unsigned macOS, an unpackaged dev run), and the banner then offers
-      // the download link exactly as it did before.
-      autoUpdate: Boolean(desktopUpdater()),
     };
     appUpdateCache.set(track, { at: Date.now(), data });
-    res.json(data);
+    reply(data);
   } catch {
-    res.json(cached ? cached.data : {}); // offline / timeout -> fail-open
+    reply(cached ? cached.data : {}); // offline / timeout -> fail-open
   }
 });
 

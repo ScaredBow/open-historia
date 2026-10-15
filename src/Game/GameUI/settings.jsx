@@ -395,6 +395,10 @@ const Toggle = ({ label, enabled, onToggle }) => {
     );
 };
 
+// The desktop account UI is eliminated from web and Android builds.
+const ChatGPTConnection = !import.meta.env.VITE_OH_WEB
+    ? React.lazy(() => import("../../desktop/ChatGPTConnection.jsx")) : null;
+
 const ApiProviderSelector = ({ provider, onProviderChange }) => {
     const [isCatalogOpen, setIsCatalogOpen] = useState(false);
     const [query, setQuery] = useState("");
@@ -768,22 +772,26 @@ const ConnectionFields = ({ connection, sharedBy = 1 }) => {
                 : "Base URL of a self-hosted proxy that speaks the Anthropic Messages API (POST /messages)."}
             />
         )}
-        <SettingsInput
+        {!import.meta.env.VITE_OH_WEB && connection.provider === "chatgpt" ? (
+            <React.Suspense fallback={<p>Loading ChatGPT connection…</p>}>
+                <ChatGPTConnection connection={connection} />
+            </React.Suspense>
+        ) : <SettingsInput
         label={selfHosted ? "API key (optional)" : `${meta.label} API key`}
         type="password"
         value={connection.apiKey}
         onChange={set("apiKey")}
         placeholder={selfHosted ? "Leave empty if your server needs none" : `Paste ${meta.label} API key`}
         helperText={`Stored only in this browser.${sharedBy > 1 ? ` Shared by ${sharedBy} entries in your list.` : ""}`}
-        />
-        <SettingsInput
+        />}
+        {connection.provider !== "chatgpt" && <SettingsInput
         label="Custom parameters (JSON)"
         multiline
         value={connection.customParams}
         onChange={set("customParams")}
         placeholder={connection.provider === "gemini" ? '{"generationConfig": {"topP": 0.9}}' : '{"top_p": 0.9}'}
         helperText="Optional. Merged into every request this connection sends — e.g. to limit reasoning budget/effort. An entry can override them. Invalid JSON is ignored."
-        />
+        />}
         {connection.provider === "openai-compatible" && (
             <>
             <Toggle label="Strict tool schema" enabled={connection.toolStrict} onToggle={() => set("toolStrict")(!connection.toolStrict)} />
@@ -828,11 +836,12 @@ const EntryEditor = ({ entry, connections, entries }) => {
         onChange={set("model")}
         suggestions={suggestions}
         placeholder={provider === "gemini" ? GEMINI_DEFAULT_CHAIN[0] : provider === "openai" ? OPENAI_DEFAULT_MODEL : provider.startsWith("anthropic") ? "claude-haiku-4-5" : "Model id"}
-        helperText={provider === "openai-compatible"
+        helperText={provider === "chatgpt" ? "Leave blank to use the first model available to this ChatGPT account."
+            : provider === "openai-compatible"
             ? "Leave blank to auto-pick a chat-capable model from the server's /models."
             : "Leave blank to use the built-in default."}
         />
-        <details style={{ marginBottom: "0.4rem" }}>
+        {provider !== "chatgpt" && <details style={{ marginBottom: "0.4rem" }}>
         <summary style={{ cursor: "pointer", fontSize: "0.74rem", color: "rgba(255,255,255,0.62)", marginBottom: "0.6rem", ...(touch ? TOUCH_SUMMARY : null) }}>This model only</summary>
         <SettingsInput
         label="Custom parameters for this model (JSON)"
@@ -844,7 +853,7 @@ const EntryEditor = ({ entry, connections, entries }) => {
         />
         <StructuredModeSelect value={entry.structuredMode} onChange={set("structuredMode")} />
         <ContextWindowField entry={entry.resolved} />
-        </details>
+        </details>}
         </div>
     );
 };
