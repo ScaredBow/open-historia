@@ -101,4 +101,22 @@ final class MockHTTP: URLProtocol {
         XCTAssertNotNil((vault.state["profiles"] as! [JSON])[0]["pending"])
     }
 
+    func testCancellingTurnDoesNotLoseIssuedRefreshRotation() async throws {
+        let (service, vault) = service(expiry: 0)
+        let issued = expectation(description: "refresh issued")
+        MockHTTP.respond = { request in
+            if request.url?.path == "/api/accounts/oauth/token" {
+                issued.fulfill(); Thread.sleep(forTimeInterval: 0.2)
+                return (200, ["access_token": "successor", "refresh_token": "durable-successor", "id_token": "pending", "token_type": "bearer", "expires_in": 3600])
+            }
+            throw URLError(.notConnectedToInternet)
+        }
+        let turn = Task { try await service.perform("models", args: ["profile"], event: { _ in }) }
+        await fulfillment(of: [issued], timeout: 2)
+        turn.cancel()
+        _ = try? await turn.value
+        let pending = (vault.state["profiles"] as! [JSON])[0]["pending"] as? JSON
+        XCTAssertEqual((pending?["data"] as? JSON)?["refresh_token"] as? String, "durable-successor")
+    }
+
 }

@@ -25,7 +25,7 @@ import HistoriaCore
         super.viewDidLoad()
         view.backgroundColor = UIColor(red: 0.075, green: 0.075, blue: 0.083, alpha: 1)
         title = isClip ? "Open Historia · App Clip" : "Open Historia"
-        status.text = "Opening your local game…"; status.textColor = .label; status.numberOfLines = 0; status.textAlignment = .center
+        status.text = "Opening your local game…"; status.textColor = .white; status.numberOfLines = 0; status.textAlignment = .center
         status.frame = view.bounds; status.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(status)
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Keep saves", style: .plain, target: self, action: #selector(keepSaves))
         if isClip { navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Get full app", style: .plain, target: self, action: #selector(getApp)) }
@@ -56,8 +56,9 @@ import HistoriaCore
     }
     override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); service.auth.window = view.window }
     @objc private func background() {
-        // A Clip may be suspended immediately. No background keepalive or token
-        // requests; cancelled turns can be retried from their last committed save.
+        // A Clip may be suspended immediately. No background keepalive. Already
+        // issued token rotations checkpoint if the OS permits; cancelled game
+        // turns are retried from their last committed save.
         for task in tasks.values { task.cancel() }
         service.auth.cancel()
     }

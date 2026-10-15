@@ -56,3 +56,22 @@ jobs:
             apple/build/clip-results.xcresult
             apple/build/device/Build/Products/Release-iphoneos/*.app
           retention-days: 7
+  diagnose-launch:
+    runs-on: macos-15
+    timeout-minutes: 10
+    permissions:
+      actions: read
+    steps:
+      - name: Inspect simulator launch failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 38815882040 -R ScaredBow/open-historia -n apple-validation -D previous
+          xcrun xcresulttool export diagnostics --path previous/build/results.xcresult --output-path diagnostics
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in Path('diagnostics').rglob('*'):
+              if p.is_file() and (p.suffix in ['.ips', '.crash'] or 'crash' in p.name.lower()):
+                  print('\nDIAGNOSTIC:', p)
+                  print(p.read_text(errors='replace')[:40000])
+          PY

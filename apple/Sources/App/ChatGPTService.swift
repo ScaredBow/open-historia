@@ -142,14 +142,24 @@ import HistoriaCore
             let now = Date().timeIntervalSince1970
             if expiry < now + 60 && earliest <= now {
                 guard let refresh = tokens["refresh"] as? String, let client = p["clientId"] as? String else { throw PlanError("sign_in_required") }
-                let data = try await token(["grant_type": "refresh_token", "client_id": client, "refresh_token": refresh])
-                p["pending"] = ["data": data, "received": Date().timeIntervalSince1970]; try save(p)
-                p = try await validatePending(p); try save(p)
+                // Once issued, a rotating refresh must reach its durable
+                // checkpoint even if the game turn is cancelled. Account
+                // changes drain this operation before changing/revoking tokens.
+                let original = p
+                let rotation = Task { @MainActor in
+                    var updated = original
+                    let data = try await self.token(["grant_type": "refresh_token", "client_id": client, "refresh_token": refresh])
+                    updated["pending"] = ["data": data, "received": Date().timeIntervalSince1970]; try self.save(updated)
+                    updated = try await self.validatePending(updated); try self.save(updated)
+                }
+                try await rotation.value
+                p = try profile(id)
             }
         } catch let error as PlanError {
             if ["invalid_identity", "sign_in_required"].contains(error.code) { p.removeValue(forKey: "tokens"); p.removeValue(forKey: "pending"); p["scopes"] = []; try save(p) }
             throw error
         }
+        try Task.checkCancellation()
         guard (p["scopes"] as? [String] ?? []).contains("chatgpt.tokens.use.direct") else { throw PlanError("sharing_not_enabled") }
         guard let tokens = p["tokens"] as? JSON, (tokens["expiresAt"] as? Double ?? 0) > Date().timeIntervalSince1970, let access = tokens["access"] as? String else { throw PlanError("network") }
         return access
