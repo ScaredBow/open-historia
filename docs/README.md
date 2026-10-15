@@ -1,6 +1,6 @@
 # Open Historia — Developer Documentation
 
-Open Historia is an AI-driven, map-based alternate-history strategy game: players run a world of owned regions on an interactive map and advance it turn-by-turn, with a language model narrating events and applying concrete changes back to the world state. The same codebase ships as three variants from one source tree — a Node/Express server build, a browser-only web build (openhistoria.com), and a Capacitor Android app with an embedded server — gated by the compile-time `VITE_OH_WEB` flag. These docs are organized by subsystem: the map and in-game UI, the world/turn model, the AI pipeline, the standalone map editor, the backend and data layers, the web/mobile targets, and the delivery/release topology. Every page is a standalone reference; this index groups them and links each with a one-line summary.
+Open Historia is an AI-driven, map-based alternate-history strategy game: players run a world of owned regions on an interactive map and advance it turn-by-turn, with a language model narrating events and applying concrete changes back to the world state. The same codebase ships as three variants from one source tree — a Node/Express server build (also packaged in Electron for desktop), a browser-only web build (openhistoria.com), and a Capacitor Android app with an embedded server — gated by the compile-time `VITE_OH_WEB` flag. These docs are organized by subsystem: the map and in-game UI, the world/turn model, the AI pipeline, the standalone map editor, the backend and data layers, the web/mobile targets, and the delivery/release topology. Every page is a standalone reference; this index groups them and links each with a one-line summary.
 
 ## Start here
 
@@ -20,6 +20,8 @@ New to the codebase? Read **[Architecture Overview](architecture.md)** first —
 - [World State & Turn Model](world-state.md) — The `world.json`/`game.json` schema, normalizers, AI impact application, state distribution, country tags, and games-vs-scenarios storage.
 
 ### AI & Prompts
+
+- [Desktop ChatGPT Sign-In](desktop/chatgpt-sign-in.md) — Account setup, encrypted credentials, fallback behavior, troubleshooting, and native release checks.
 - [AI System Overview](ai-overview.md) — Transport/provider dispatch, key/relay security, streaming vs buffered, token caps, and the `runJsonTask` strict/salvage task pipeline.
 - [Prompt-Making Guide](ai-prompts.md) — The reference for authoring and editing AI prompts: every variable, all tasks, end-to-end assembly, and the override/frozen-prompt model.
 - [AI Return Schemas & Validation](ai-schemas.md) — AI JSON return schemas, the two-layer validator, and the `runJsonTask` strict/salvage retry discipline.
@@ -39,4 +41,4 @@ New to the codebase? Read **[Architecture Overview](architecture.md)** first —
 
 ### Delivery
 - [The Player Wiki](wiki.md) — Maintaining openhistoria.com/wiki/: the markdown-to-HTML generator, `npm run wiki:check` for spotting when it has gone stale, the screenshot harness, and the main-vs-beta rules.
-- [Delivery, Deploy & Releases](delivery-and-deploy.md) — Full CI/release/deploy topology: build scripts, main/beta/alpha channels + PR-triplet, the release assets, the four workflows, `build:site`, the admin-panel deploy engine, and the Workers.
+- [Delivery, Deploy & Releases](delivery-and-deploy.md) — Full CI/release/deploy topology: build scripts, main/beta/alpha channels + PR-triplet, the release assets, the workflows, `build:site`, the admin-panel deploy engine, and the Workers.

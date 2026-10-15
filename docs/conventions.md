@@ -1,6 +1,6 @@
 # Contributing & Conventions
 
-Open Historia is an open-source, community-driven alternative to Pax Historia: a React + Vite client, an Express server (`server/server.js`), a vector map editor, and a small fleet of build/release scripts. This page is the practical orientation for a new contributor — where the code lives, how it flows to players through the release channels, how to run and test it locally, the commit/style rules the maintainer enforces, and the handful of identifiers and data-hosting rules you must **not** break. There is no `CONTRIBUTING.md` in the repo; this doc is the closest thing, distilled from `README.md`, `package.json`, `.github/workflows/`, the license banners in the source, and `.gitattributes`/`.gitignore`.
+Open Historia is an open-source, community-driven alternative to Pax Historia: a React + Vite client, an Express server (`server/server.js`), a vector map editor, and a small fleet of build/release scripts. This page is the practical orientation for a new contributor — where the code lives, how it flows to players through the release channels, how to run and test it locally, the commit/style rules the maintainer enforces, and the handful of identifiers and data-hosting rules you must **not** break. Read [CONTRIBUTING.md](../CONTRIBUTING.md) for the canonical contribution terms and pull-request requirements.
 
 For the systems these conventions govern, see [Architecture](architecture.md), [Server](server.md), [Assets & data](assets-and-data.md), and [Web build](web-build.md).
 
@@ -10,14 +10,9 @@ For the systems these conventions govern, see [Architecture](architecture.md), [
 
 The canonical repo is the **`Open-Historia` GitHub org**: `Open-Historia/open-historia`. That is what `README.md` tells players to clone (`git clone https://github.com/Open-Historia/open-historia.git`) and what every workflow, license banner, and asset manifest points back to.
 
-This working clone (`work-repo`) has several remotes configured — useful to know so you push to the right place:
-
-| Remote | URL | Role |
-|--------|-----|------|
-| `upstream` | `github.com/Open-Historia/open-historia` | The canonical org repo. PRs land here; this is "the repo". |
-| `origin` | the maintainer's personal fork on GitHub (`Arkniem`) | Maintainer's personal working fork. |
-| `beta` | `github.com/Arkniem/Open-Historia-Beta` | Beta staging fork. |
-| `ltfork` | `github.com/lt20202122/open-historia` | A contributor fork. |
+Remotes depend on the clone. Run `git remote -v` before fetching or pushing:
+`origin` normally identifies your fork, while `upstream`, when configured, identifies
+the canonical repository. Do not assume another contributor's remote names or URLs.
 
 `scripts/map-assets.json` hard-codes `"owner": "Open-Historia", "repo": "open-historia", "release": "map-data"` — the org repo is also where the large binary release assets live (see §9).
 
@@ -33,16 +28,18 @@ Sibling repos in the same org that the code and docs reference (not part of this
 
 ## 2. Branches & the release channel model
 
-The repo ships to players through **rolling per-channel GitHub Releases**, driven entirely by which branch you push to. The workflows in `.github/workflows/` are the source of truth:
+The repo ships to players through **rolling per-channel GitHub Releases**, selected by the workflow, source branch, and release tag. The workflows in `.github/workflows/` are the source of truth:
 
-| Branch | Built by | Produces |
+| Channel / source | Built by | Produces |
 |--------|----------|----------|
-| `main` | `.github/workflows/app-bundle.yml` | `Open-Historia.zip` on the **`app-stable`** release (stable desktop bundle). |
+| Stable desktop | `.github/workflows/desktop-installer.yml` | Platform installers; dispatch defaults to **`desktop-stable`**, or trigger with a `desktop-v*` tag. |
 | `main` | `.github/workflows/deploy-site.yml` | Deploys **openhistoria.com** (Cloudflare Pages) via `npm run build:site`. |
-| `beta` | `.github/workflows/app-bundle.yml` | `Open-Historia.zip` on the **`app-beta`** release. |
-| (any) `mobile/**` change | `.github/workflows/android-apk.yml` | `open-historia.apk` on the **`android`** release (run from the Actions tab, or push an `android-v*` tag). |
+| `beta` desktop | `.github/workflows/desktop-beta.yml` | Platform installers on **`desktop-beta`**; dispatch or `desktop-beta-v*` tag. |
+| Stable Android | `.github/workflows/android-apk.yml` | **`android`** release; dispatch or `android-v*` tag. |
+| `beta` Android | `.github/workflows/android-apk-beta.yml` | **`android-beta`** release; dispatch or `android-beta-v*` tag. |
 
-`app-bundle.yml` runs on **every push to `main` and `beta`**, so the download never goes stale (`.github/workflows/app-bundle.yml:13-15`). It picks the channel from `github.ref_name`: `main → app-stable`, else `app-beta` (`app-bundle.yml:57-68`).
+Desktop releases require a workflow dispatch or matching tag; a branch push alone
+does not publish installers. See [Delivery & releases](delivery-and-deploy.md).
 
 `deploy-site.yml` skips its build for `**.md`, `mobile/**`, and `.github/**` changes (docs/app can't change what the site serves) and refuses to deploy any file over Cloudflare Pages' 25 MiB limit (`deploy-site.yml:21-27`, `:58-68`).
 
@@ -213,8 +210,7 @@ These strings are wired into external contracts (release assets players download
 | **The Android application id** (Capacitor `appId`) | `mobile/capacitor.config.json:2` | The Android application ID. Changing it makes every existing install a *different* app — no in-place update; users would get a duplicate. |
 | **`open-historia.apk`** (release asset name) | `.github/workflows/android-apk.yml:60,64,76` | The exact filename players download from the `android` release, and what the README and site link by name. Renamed from the project's earlier name on 2026-09-04 (main `e29967e`); see delivery-and-deploy.md §3 for what that cost. |
 | **`android`** (rolling release tag) | `android-apk.yml:74-76` | The APK is republished to this single rolling release; the app updates itself from it. |
-| **`app-stable` / `app-beta`** (release tags) | `app-bundle.yml:57-68` | The `Open-Historia.zip` download tags for the two desktop channels. |
-| **`Open-Historia.zip`** (bundle asset name) | `app-bundle.yml:54,84`; README | The one-download full app; linked by name. |
+| **`desktop-stable` / `desktop-beta`** (release tags) | `desktop-installer.yml`, `desktop-beta.yml` | Desktop installers and update manifests for the two channels. |
 | **`map-data`** (release) + the per-asset names | `scripts/map-assets.json` | The map-binary release and asset names (`regions.pmtiles`, `regions-seed-z8.geojson`, `default-regions-names.geojson`, …). The fetch script resolves these by name; a rename orphans every fetch. |
 | **The Android WebView host** (Capacitor `hostname`) | `mobile/capacitor.config.json:7` | The WebView origin the Android app serves under. |
 | **`Build: N`** convention | `android-apk.yml:32-35,72` | The boot screen matches `__APP_BUILD__` (stamped from the run number) against `Build: N` in the release notes to decide whether to self-update. Keep both sides in sync. |

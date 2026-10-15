@@ -463,7 +463,8 @@ const APP_UPDATE_MANIFESTS = {
 };
 // The desktop app imports this server into its Electron main process
 // (electron/main.cjs startServer), so the updater living there is reachable
-// straight through globalThis — no IPC, and no preload on the game window. It is
+// straight through globalThis without IPC. The separate ChatGPT preload is not
+// involved in these updater routes. The updater is
 // absent everywhere else, which is what makes these routes inert in the zip build
 // and on the website.
 const desktopUpdater = () => globalThis.__ohAutoUpdate || null;

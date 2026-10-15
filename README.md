@@ -35,25 +35,22 @@ Local AI (Ollama, LM Studio) needs one extra step in the browser: the server has
 the site's origin, e.g. start Ollama with `OLLAMA_ORIGINS=https://openhistoria.com`. The
 desktop app below needs no such setup.
 
-### Desktop (offline, single-player)
+### Desktop (local saves, single-player)
 
-Download **[`Open-Historia.zip`](https://github.com/Open-Historia/open-historia/releases/tag/app-stable)**
-(~186 MB — code *and* all map data), unzip it anywhere, then:
+Download the installer for your platform from the
+[desktop release](https://github.com/Open-Historia/open-historia/releases/tag/desktop-stable):
 
-- **Windows:** run **`Open-Historia-Setup.exe`**, then open Open Historia from the Start Menu
-- **macOS:** unzip and drag **Open Historia** to Applications (first run: right-click -> *Open*)
-- **Linux:** `chmod +x Open-Historia-x86_64.AppImage` and run it
+- **Windows:** run **`Open-Historia-Setup.exe`**, then open Open Historia from the Start Menu.
+- **macOS:** unzip the package for your architecture and drag **Open Historia** to Applications.
+- **Linux:** make the **`.AppImage`** executable and run it, or install the **`.deb`** package.
 
-The launcher checks Node.js, downloads the map data, installs dependencies, builds,
-and opens the game. To update an existing install later, run the matching
-newest installer from the downloads page and run it over the top - your saves
-while preserving your saves, scenarios, and map data.
+These packages include Electron and the built application; installing them does not
+require Node.js or building the source. Updates preserve your local saves and scenarios.
+Local models can work offline; hosted AI, community features, and updates need a network connection.
 
-> [!TIP]
-> Run the launcher **normally** — it does not need (and works better without)
-> administrator rights: an elevated window gets the admin account's environment,
-> which can hide a Node.js that was installed for your own account.
-
+Development builds on the ChatGPT integration branch also offer **Continue with ChatGPT**.
+See [Desktop ChatGPT setup and troubleshooting](docs/desktop/chatgpt-sign-in.md)
+for account requirements, fallback behavior, and release verification still required.
 
 #### Android app
 
@@ -101,6 +98,10 @@ node server/server.js              # Start the server
 ```
 
 Then open **http://localhost:3000** in your browser.
+
+To run the Electron desktop app instead, stop the standalone server and run
+`npm run electron` after building. Electron starts its own local server. Desktop
+ChatGPT sign-in requires this Electron window; it is unavailable in a browser tab.
 
 ### Reaching the server from another device
 
