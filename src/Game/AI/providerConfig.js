@@ -31,11 +31,6 @@ const FORMER_GEMINI_DEFAULT = "gemini-3.5-flash-lite";
 export const OPENAI_DEFAULT_MODEL = "gpt-6-luna";
 
 export const PROVIDER_OPTIONS = [
-    ...(!import.meta.env?.VITE_OH_WEB && globalThis.window?.ohChatGPT ? [{
-        value: "chatgpt", label: "ChatGPT plan", group: "Desktop accounts",
-        description: "Sign in with ChatGPT — use your plan without an API key",
-        searchTerms: ["chatgpt", "subscription", "sign in"],
-    }] : []),
     {
         value: "gemini",
         label: "Gemini",
@@ -265,12 +260,10 @@ export function syncAiDebugContext() {
 // start prompt asks for it up front instead of letting the first turn fail.
 export function providerSetupRequirement(provider) {
     const normalized = normalizeProvider(provider);
-    if (normalized === "chatgpt") return "chatgptProfileId";
     return normalized === "openai-compatible" || normalized === "anthropic-compatible" ? "endpoint" : "apiKey";
 }
 
 export function describeProviderSetupNeed(provider) {
-    if (provider === "chatgpt") return "ChatGPT sign-in in Settings";
     return providerSetupRequirement(provider) === "endpoint" ? "a server endpoint" : "an API key";
 }
 
@@ -352,8 +345,7 @@ const normalizeConnection = (connection) => ({
     id: String(connection?.id || newId("conn")),
     provider: normalizeProvider(connection?.provider),
     name: connection?.name == null ? getProviderMeta(connection?.provider).label : String(connection.name),
-    apiKey: connection?.provider === "chatgpt" ? "" : String(connection?.apiKey ?? ""),
-    ...(connection?.provider === "chatgpt" ? { chatgptProfileId: String(connection?.chatgptProfileId ?? "") } : {}),
+    apiKey: String(connection?.apiKey ?? ""),
     endpoint: String(connection?.endpoint ?? ""),
     customParams: String(connection?.customParams ?? ""),
     toolStrict: connection?.toolStrict === true,
@@ -588,7 +580,6 @@ const resolveEntry = (entry, connectionsById) => {
         provider: connection.provider,
         connectionName: connectionDisplayName(connection),
         apiKey: connection.apiKey,
-        ...(connection.provider === "chatgpt" ? { chatgptProfileId: connection.chatgptProfileId } : {}),
         endpoint: connection.endpoint,
         model,
         customParams: entry.customParamsOverride.trim() ? entry.customParamsOverride : connection.customParams,

@@ -9,7 +9,7 @@
 // would be ESM, and Electron's main process is most predictable as CJS. The
 // server is ESM and is pulled in with a dynamic import().
 
-const { app, BrowserWindow, dialog, ipcMain, shell, Menu, MenuItem, safeStorage } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, Menu, MenuItem } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -172,7 +172,8 @@ process.on("unhandledRejection", (reason) => {
 
 // The build id the release workflow stamped in. The server passes it to the page so
 // the update banner can compare it against the published one. Deliberately routed
-// this way so updates do not depend on the ChatGPT-only preload bridge below.
+// this way rather than through a preload: attaching a preload to the game window is
+// what broke the app last time, and this adds nothing to how the window is created.
 try {
   process.env.OH_DESKTOP_BUILD = String(
     JSON.parse(fs.readFileSync(path.join(__dirname, "build-id.json"), "utf8")).build || "",
@@ -614,9 +615,6 @@ app.on("child-process-gone", (_event, details) => {
   logMain("warn", "gpu.processGone", `The graphics process stopped (${String(details.reason || "unknown")}).`, { reason: details.reason, exitCode: details.exitCode });
 });
 
-let chatgptRuntime;
-let attachChatGPT;
-
 const createMainWindow = () => {
   const win = new BrowserWindow({
     width: 1440,
@@ -629,7 +627,7 @@ const createMainWindow = () => {
     title: IS_BETA ? BETA_APP_NAME : "Open Historia",
     // Explicit even though it's already Electron's default — the whole reason
     // this window needs a context menu at all is to surface what this enables.
-    webPreferences: { spellcheck: true, preload: path.join(__dirname, "game-preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: { spellcheck: true },
   });
   // Links to GitHub/Discord open in the real browser rather than replacing the
   // game with a page the player cannot navigate back from.
@@ -665,10 +663,6 @@ const createMainWindow = () => {
     if (targetUrl.startsWith(`${appOrigin}/`) || targetUrl === appOrigin) return;
     event.preventDefault();
     if (openableExternally(targetUrl)) shell.openExternal(targetUrl);
-  });
-  attachChatGPT({ ipcMain, window: win, runtime: chatgptRuntime,
-    origin: `http://localhost:${process.env.PORT || 3000}`,
-    openUsage: () => shell.openExternal("https://chatgpt.com/settings/usage"),
   });
   attachEditingContextMenu(win);
   win.webContents.on("render-process-gone", (_event, details) => handlePageGone(win, details, { quitting }));
@@ -766,16 +760,6 @@ const startServer = async () => {
 };
 
 const boot = async () => {
-  const [{ createVault }, { createOAuth }, { createRuntime }, ipc] = await Promise.all([
-    import("./chatgpt/vault.js"), import("./chatgpt/oauth.js"),
-    import("./chatgpt/runtime.js"), import("./chatgpt/ipc.js"),
-  ]);
-  attachChatGPT = ipc.attachChatGPT;
-  chatgptRuntime = createRuntime({
-    vault: createVault(path.join(USER_ROOT, "chatgpt"), safeStorage),
-    oauth: createOAuth({ openBrowser: url => shell.openExternal(url) }),
-  });
-  app.once("before-quit", () => chatgptRuntime.close());
   // Which copy of the app's files this start runs: the installed ones, or a
   // set an update put together (electron/bootstrap.cjs decided, and says why).
   const files = globalThis.__ohPayload;

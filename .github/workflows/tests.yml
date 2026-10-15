@@ -55,20 +55,3 @@ jobs:
             if (!(left > 14)) { console.error(`public/content-manifest.json expires ${expires} (${left.toFixed(1)} days): re-sign it with scripts/sign-release.mjs`); process.exit(1); }
             console.log(`content manifest valid for ${left.toFixed(0)} more days`);
           '
-
-  chatgpt-desktop:
-    name: ChatGPT desktop (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Auth, vault replacement, inference, and renderer regressions
-        run: node --test server/chatgptDesktop.test.js src/desktop/*.test.js

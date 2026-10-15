@@ -141,7 +141,7 @@ export const appendLookupRound = (history, calls, results) => {
   const byId = new Map(array(results).map((result) => [clean(result.id), result]));
   return [
     ...array(history),
-    { role: "model", ...(calls?.[0]?.chatgptItems ? { chatgptItems: calls[0].chatgptItems } : {}), parts: array(calls).map((call) => ({ functionCall: { id: clean(call.id), name: clean(call.name), args: call.args ?? {} }, ...signatureOf(call) })) },
+    { role: "model", parts: array(calls).map((call) => ({ functionCall: { id: clean(call.id), name: clean(call.name), args: call.args ?? {} }, ...signatureOf(call) })) },
     {
       role: "user",
       parts: array(calls).map((call) => {
