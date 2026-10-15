@@ -148,7 +148,7 @@ const ChatGPTQuickSetup = (!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_
 const groupedProviders = () => {
   const groups = new Map();
   for (const option of PROVIDER_OPTIONS) {
-    if (option.value === "chatgpt") continue; // Dedicated desktop sign-in above the key form.
+    if (option.value === "chatgpt") continue; // Dedicated native sign-in above the key form.
     const name = option.group || "Providers";
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(option);

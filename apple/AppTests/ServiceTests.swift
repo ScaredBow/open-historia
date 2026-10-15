@@ -17,7 +17,7 @@ final class MockHTTP: URLProtocol {
         do {
             let (status, body) = try Self.respond(request)
             client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: JSONSerialization.data(withJSONObject: body)); client?.urlProtocolDidFinishLoading(self)
+            client?.urlProtocol(self, didLoad: try JSONSerialization.data(withJSONObject: body)); client?.urlProtocolDidFinishLoading(self)
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() {}
@@ -65,4 +65,30 @@ final class MockHTTP: URLProtocol {
         XCTAssertNil((vault.state["profiles"] as! [JSON])[0]["tokens"])
         XCTAssertEqual(vault.state["hostId"] as? String, "urn:uuid:test")
     }
+    func testRefreshRotationIsCheckpointedBeforeJWKSAndRetriedWithoutRotatingAgain() async throws {
+        let (service, vault) = service(expiry: 0)
+        var rotations = 0
+        MockHTTP.respond = { request in
+            if request.url?.path == "/api/accounts/oauth/token" {
+                rotations += 1
+                return (200, ["access_token": "successor-access", "refresh_token": "successor-refresh", "id_token": "not-yet-verified", "token_type": "bearer", "expires_in": 3600])
+            }
+            throw URLError(.notConnectedToInternet)
+        }
+        for _ in 0..<2 {
+            do { _ = try await service.perform("models", args: ["profile"], event: { _ in }); XCTFail() } catch { }
+            let pending = (vault.state["profiles"] as! [JSON])[0]["pending"] as! JSON
+            XCTAssertEqual((pending["data"] as! JSON)["refresh_token"] as? String, "successor-refresh")
+        }
+        XCTAssertEqual(rotations, 1)
+        let snapshot = try service.snapshot()
+        XCTAssertEqual((snapshot["profiles"] as! [JSON])[0]["sharing"] as? Bool, false)
+    }
+    func testKeychainFailureDoesNotPublishConnectedState() async throws {
+        let (service, vault) = service()
+        vault.failWrites = true
+        XCTAssertThrowsError(try service.snapshot())
+        XCTAssertNotNil((vault.state["profiles"] as! [JSON])[0]["tokens"])
+    }
+
 }

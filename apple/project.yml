@@ -66,7 +66,8 @@ targets:
         INFOPLIST_FILE: Config/Clip.plist
         CODE_SIGN_ENTITLEMENTS: Config/Clip.entitlements
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) APPCLIP
-    scheme: {}
+    scheme:
+      testTargets: [OpenHistoriaClipUITests]
   OpenHistoriaTests:
     type: bundle.unit-test
     platform: iOS
@@ -88,3 +89,13 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: $(HISTORIA_BUNDLE_ID).UITests
+  OpenHistoriaClipUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: OpenHistoriaClip
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: $(HISTORIA_BUNDLE_ID).ClipUITests

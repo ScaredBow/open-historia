@@ -97,7 +97,7 @@ import HistoriaCore
                 default:
                     result = try await service.perform(method, args: args) { [weak self] event in
                         var payload = event; payload["id"] = requestID
-                        self?.web.callAsyncJavaScript("window.__ohNativeEvent(event)", arguments: ["event": payload], in: nil, contentWorld: .page, completionHandler: nil)
+                        self?.web.callAsyncJavaScript("window.__ohNativeEvent(event)", arguments: ["event": payload], in: nil, in: .page, completionHandler: nil)
                     }
                 }
                 try Task.checkCancellation(); success(result)
@@ -114,7 +114,7 @@ import HistoriaCore
     }
     @objc private func keepSaves() {
         guard let web else { return }
-        web.callAsyncJavaScript("return await window.ohKeepAppleSaves()", arguments: [:], in: nil, contentWorld: .page) { [weak self] result in
+        web.callAsyncJavaScript("return await window.ohKeepAppleSaves()", arguments: [:], in: nil, in: .page) { [weak self] result in
             let message: String
             switch result { case .success: message = "Your games are ready for the full app on this device. Install it before iOS removes the App Clip’s data. Keep a separate export of important games."; case .failure: message = "Your games could not be prepared for transfer. Your current saves are unchanged. Try again after unlocking your device." }
             self?.alert(message)

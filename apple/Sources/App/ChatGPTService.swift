@@ -50,6 +50,7 @@ import HistoriaCore
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (bytes, response) = try await session.bytes(for: req)
+            defer { bytes.task.cancel() }
             guard let http = response as? HTTPURLResponse else { throw PlanError("network") }
             if !(200..<300).contains(http.statusCode) {
                 var errorData = Data()

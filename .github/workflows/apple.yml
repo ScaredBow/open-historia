@@ -1,7 +1,5 @@
 name: Apple app and App Clip
 on:
-  push:
-    branches: [codex/ios-app-clip]
   pull_request:
     paths: ['apple/**', 'src/**', 'vite.config.ts', 'package*.json', '.github/workflows/apple.yml']
   workflow_dispatch:
@@ -39,6 +37,11 @@ jobs:
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
           xcodebuild -project apple/OpenHistoria.xcodeproj -scheme OpenHistoria -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath apple/build/simulator -resultBundlePath apple/build/results.xcresult CODE_SIGNING_ALLOWED=NO test
+      - name: Test App Clip on iPhone simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
+          xcrun simctl uninstall "$DEVICE" org.openhistoria.game || true
+          xcodebuild -project apple/OpenHistoria.xcodeproj -scheme OpenHistoriaClip -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath apple/build/clip-simulator -resultBundlePath apple/build/clip-results.xcresult CODE_SIGNING_ALLOWED=NO test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -46,5 +49,6 @@ jobs:
           path: |
             apple/build-size.json
             apple/build/results.xcresult
+            apple/build/clip-results.xcresult
             apple/build/device/Build/Products/Release-iphoneos/*.app
           retention-days: 7
