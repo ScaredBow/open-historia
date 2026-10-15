@@ -72,7 +72,7 @@ import HistoriaCore
         func success(_ value: Any = NSNull()) { reply(["ok": true, "value": value], nil) }
         let requestID = args.first as? String ?? UUID().uuidString
         if method == "cancel" { tasks[requestID]?.cancel(); success(); return }
-        if method == "cancelSignIn" { service.auth.cancel(); success(); return }
+        if method == "cancelSignIn" { tasks["account"]?.cancel(); service.auth.cancel(); success(); return }
         if method == "usage" { UIApplication.shared.open(URL(string: "https://chatgpt.com/#settings/Account")!); success(); return }
         let changing = ["signIn", "select", "disconnect"].contains(method)
         let predecessors = changing ? Array(tasks.values) : []

@@ -23,7 +23,7 @@ import HistoriaCore
         try vault.write(next); state = next
     }
     private func publicProfile(_ p: JSON) -> JSON {
-        ["id": p["id"] ?? "", "label": p["label"] ?? "ChatGPT", "email": (p["identity"] as? JSON)?["email"] ?? "", "status": p["tokens"] == nil ? "disconnected" : "connected", "sharing": p["tokens"] != nil && p["pending"] == nil && (p["scopes"] as? [String] ?? []).contains("chatgpt.tokens.use.direct")]
+        ["id": p["id"] ?? "", "label": p["label"] ?? "ChatGPT", "email": (p["identity"] as? JSON)?["email"] ?? "", "status": p["tokens"] == nil ? "disconnected" : "connected", "sharing": p["tokens"] != nil && (p["scopes"] as? [String] ?? []).contains("chatgpt.tokens.use.direct")]
     }
     func snapshot() throws -> JSON { try load(); return ["profiles": profiles.map(publicProfile), "activeId": state?["activeId"] ?? NSNull()] }
     func perform(_ method: String, args: [Any], event: @escaping (JSON) -> Void) async throws -> Any {

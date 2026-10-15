@@ -82,7 +82,7 @@ final class MockHTTP: URLProtocol {
         }
         XCTAssertEqual(rotations, 1)
         let snapshot = try service.snapshot()
-        XCTAssertEqual((snapshot["profiles"] as! [JSON])[0]["sharing"] as? Bool, false)
+        XCTAssertEqual((snapshot["profiles"] as! [JSON])[0]["sharing"] as? Bool, true) // Existing verified grant remains retryable; pending tokens are never used.
     }
     func testKeychainFailureDoesNotPublishConnectedState() async throws {
         let (service, vault) = service()

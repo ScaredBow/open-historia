@@ -30,6 +30,7 @@ import HistoriaCore
             try await withCheckedThrowingContinuation { continuation in
                 callback = continuation
                 server.handler = { [weak self] request in
+                    guard self?.listener === server, self?.callback != nil else { throw PlanError("invalid_callback") }
                     let value: (code: String, client: String?)
                     do { value = try OAuthProtocol.callback(target: request.target, host: request.headers["host"] ?? "", expectedHost: "127.0.0.1:\(server.port)", state: state) } catch let error as PlanError where error.code == "access_denied" {
                         self?.finish(.failure(error))
