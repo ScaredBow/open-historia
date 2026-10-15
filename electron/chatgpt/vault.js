@@ -1,0 +1,39 @@
+import { mkdir, readFile, open, rename, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { ChatGPTError } from './errors.js';
+
+// Only the Electron main process owns this store. Electron's single-instance
+// lock and the runtime's mutation queue serialize all writes/refresh rotation.
+export function createVault(directory, safeStorage) {
+  const file = join(directory, 'accounts.enc');
+  const available = () => safeStorage.isEncryptionAvailable()
+    && (!safeStorage.getSelectedStorageBackend || safeStorage.getSelectedStorageBackend() !== 'basic_text');
+  const requireKey = () => { if (!available()) throw new ChatGPTError('storage_unavailable'); };
+  return {
+    async read() {
+      requireKey();
+      let bytes;
+      try { bytes = await readFile(file); } catch (error) {
+        if (error.code === 'ENOENT') return { version: 1, hostId: `urn:uuid:${randomUUID()}`, profiles: [], activeId: null };
+        throw new ChatGPTError('storage_invalid');
+      }
+      try {
+        const state = JSON.parse(safeStorage.decryptString(bytes));
+        if (state.version !== 1 || !/^urn:uuid:[a-f0-9-]{36}$/.test(state.hostId) || !Array.isArray(state.profiles)) throw new Error();
+        return state;
+      } catch { throw new ChatGPTError('storage_invalid'); }
+    },
+    async write(state) {
+      requireKey();
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const temporary = `${file}.${randomUUID()}.tmp`;
+      try {
+        const handle = await open(temporary, 'wx', 0o600);
+        try { await handle.writeFile(safeStorage.encryptString(JSON.stringify(state))); await handle.sync(); }
+        finally { await handle.close(); }
+        await rename(temporary, file);
+      } finally { await unlink(temporary).catch(() => {}); }
+    },
+  };
+}
