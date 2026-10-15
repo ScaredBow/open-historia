@@ -73,7 +73,7 @@ import HistoriaCore
         let requestID = args.first as? String ?? UUID().uuidString
         if method == "cancel" { tasks[requestID]?.cancel(); success(); return }
         if method == "cancelSignIn" { tasks["account"]?.cancel(); service.auth.cancel(); success(); return }
-        if method == "usage" { UIApplication.shared.open(URL(string: "https://chatgpt.com/#settings/Account")!); success(); return }
+        if method == "usage" { UIApplication.shared.open(URL(string: "https://chatgpt.com/settings/usage")!); success(); return }
         let changing = ["signIn", "select", "disconnect"].contains(method)
         let predecessors = changing ? Array(tasks.values) : []
         if changing {
@@ -133,6 +133,12 @@ import HistoriaCore
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if action.shouldPerformDownload { decisionHandler(.download); return }
+        if action.navigationType == .linkActivated, url.scheme == "http", url.host == "127.0.0.1", url.port == Int(server.port),
+           url.path == "/privacy/" || url.path.hasPrefix("/wiki/") {
+            var help = URLComponents(); help.scheme = "https"; help.host = "openhistoria.com"; help.path = url.path
+            if let destination = help.url { UIApplication.shared.open(destination) }
+            decisionHandler(.cancel); return
+        }
         if url.scheme == "http", url.host == "127.0.0.1", url.port == Int(server.port), action.targetFrame?.isMainFrame == true { decisionHandler(.allow); return }
         if action.navigationType == .linkActivated, url.scheme == "https" { UIApplication.shared.open(url) }
         decisionHandler(.cancel)

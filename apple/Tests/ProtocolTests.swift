@@ -65,6 +65,7 @@ final class ProtocolTests: XCTestCase {
         func parse(_ target: String = "/index.html", extra: String = "", host: String = "127.0.0.1:42") throws -> HTTPRequest { try HTTPRequest.parse(Data("GET \(target) HTTP/1.1\r\nHost: \(host)\r\n\(extra)\r\n".utf8), host: "127.0.0.1:42") }
         let root = URL(fileURLWithPath: "/tmp/bundle")
         XCTAssertEqual(try parse().file(under: root).path, "/tmp/bundle/index.html")
+        XCTAssertEqual(try parse("/privacy/").file(under: root).path, "/tmp/bundle/privacy/index.html")
         XCTAssertThrowsError(try parse("/%2e%2e/private").file(under: root))
         XCTAssertThrowsError(try parse(host: "evil.test"))
         XCTAssertThrowsError(try parse(extra: "Origin: https://evil.test\r\n"))

@@ -91,4 +91,14 @@ final class MockHTTP: URLProtocol {
         XCTAssertNotNil((vault.state["profiles"] as! [JSON])[0]["tokens"])
     }
 
+    func testCorruptPendingRecordFailsClosedWithoutDiscardingIt() async throws {
+        let (service, vault) = service()
+        var profiles = vault.state["profiles"] as! [JSON]
+        profiles[0]["pending"] = ["data": ["id_token": "partial"], "received": 2000]
+        vault.state["profiles"] = profiles
+        MockHTTP.respond = { _ in XCTFail("Invalid saved token must not reach the network"); return (500, [:]) }
+        do { _ = try await service.perform("models", args: ["profile"], event: { _ in }); XCTFail() } catch { XCTAssertEqual((error as? PlanError)?.code, "storage_invalid") }
+        XCTAssertNotNil((vault.state["profiles"] as! [JSON])[0]["pending"])
+    }
+
 }

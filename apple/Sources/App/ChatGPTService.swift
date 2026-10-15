@@ -104,12 +104,14 @@ import HistoriaCore
     }
     private func validatePending(_ p: JSON) async throws -> JSON {
         guard let pending = p["pending"] as? JSON, let data = pending["data"] as? JSON, let received = pending["received"] as? Double,
-              let client = p["clientId"] as? String, let id = data["id_token"] as? String else { throw PlanError("invalid_identity") }
+              let client = p["clientId"] as? String, let id = data["id_token"] as? String,
+              let access = data["access_token"] as? String, !access.isEmpty,
+              let expiry = data["expires_in"] as? Double, expiry > 0 else { throw PlanError("storage_invalid") }
         let meta = try await metadata(), keys = try await json(URL(string: meta["jwks_uri"] as! String)!)
         let identity = try Identity.verify(id, jwks: keys, client: client, nonce: pending["nonce"] as? String, subject: (p["identity"] as? JSON)?["subject"] as? String, now: received)
         var updated = p
         let old = p["tokens"] as? JSON
-        var tokens: JSON = ["access": data["access_token"]!, "id": id, "expiresAt": received + (data["expires_in"] as! Double)]
+        var tokens: JSON = ["access": access, "id": id, "expiresAt": received + expiry]
         tokens["refresh"] = data["refresh_token"] ?? old?["refresh"]
         tokens["earliest"] = data["earliest_refresh_at"]
         updated["tokens"] = tokens; updated["identity"] = identity

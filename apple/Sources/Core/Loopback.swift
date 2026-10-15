@@ -23,7 +23,8 @@ public struct HTTPRequest {
     public func file(under root: URL) throws -> URL {
         guard let path = target.split(separator: "?", maxSplits: 1).first.map(String.init)?.removingPercentEncoding,
               !path.contains("\0"), !path.contains("\\"), !path.split(separator: "/").contains("..") else { throw PlanError("invalid_request") }
-        let file = root.appendingPathComponent(path == "/" ? "index.html" : String(path.dropFirst())).resolvingSymlinksInPath()
+        let route = path.hasSuffix("/") ? path + "index.html" : path
+        let file = root.appendingPathComponent(String(route.dropFirst())).resolvingSymlinksInPath()
         guard file.path.hasPrefix(root.resolvingSymlinksInPath().path + "/") else { throw PlanError("invalid_request") }
         return file
     }
@@ -38,10 +39,17 @@ public struct HTTPRequest {
     public var handler: ((HTTPRequest) throws -> (String, Data))?
     public init() {}
     public func start(port requested: UInt16 = 0) async throws {
+        try Task.checkCancellation()
+        guard listener == nil else { throw PlanError("busy") }
         let params = NWParameters.tcp
         params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: requested)!)
         let listener = try NWListener(using: params)
         self.listener = listener
+        startTimeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(10)); self?.stop() } catch { }
+        }
+        defer { startTimeout?.cancel(); startTimeout = nil }
+        try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             startContinuation = continuation
             listener.stateUpdateHandler = { [weak self] state in
@@ -52,7 +60,10 @@ public struct HTTPRequest {
             }
             listener.start(queue: .main)
         }
+        } onCancel: { Task { @MainActor in self.stop(error: PlanError("cancelled")) } }
+        try Task.checkCancellation()
     }
+    private var startTimeout: Task<Void, Never>?
     private var startContinuation: CheckedContinuation<Void, Error>?
     private func changed(_ state: NWListener.State) {
         switch state {
@@ -75,25 +86,35 @@ public struct HTTPRequest {
         receive(connection, id: id, accumulated: Data())
     }
     private func receive(_ connection: NWConnection, id: UUID, accumulated: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { data, _, done, error in
-            var bytes = accumulated; bytes.append(data ?? Data())
-            if bytes.count > 16_384 { self.reply(connection, id: id, status: "431 Request Header Fields Too Large", mime: "text/plain", data: Data()); return }
-            if bytes.range(of: Data("\r\n\r\n".utf8)) != nil {
-                do {
-                    let request = try HTTPRequest.parse(bytes, host: "127.0.0.1:\(self.port)")
-                    guard let handler = self.handler else { throw PlanError("invalid_request") }
-                    let (mime, body) = try handler(request)
-                    self.reply(connection, id: id, status: "200 OK", mime: mime, data: body)
-                } catch { self.reply(connection, id: id, status: "400 Bad Request", mime: "text/plain", data: Data("Request rejected".utf8)) }
-            } else if done || error != nil { connection.cancel(); self.connections.removeValue(forKey: id) }
-            else { self.receive(connection, id: id, accumulated: bytes) }
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, done, error in
+            Task { @MainActor in
+                guard let self, self.connections[id] != nil else { connection.cancel(); return }
+                var bytes = accumulated; bytes.append(data ?? Data())
+                if bytes.count > 16_384 { self.reply(connection, id: id, status: "431 Request Header Fields Too Large", mime: "text/plain", data: Data()); return }
+                if bytes.range(of: Data("\r\n\r\n".utf8)) != nil {
+                    do {
+                        let request = try HTTPRequest.parse(bytes, host: "127.0.0.1:\(self.port)")
+                        guard let handler = self.handler else { throw PlanError("invalid_request") }
+                        let (mime, body) = try handler(request)
+                        self.reply(connection, id: id, status: "200 OK", mime: mime, data: body)
+                    } catch { self.reply(connection, id: id, status: "400 Bad Request", mime: "text/plain", data: Data("Request rejected".utf8)) }
+                } else if done || error != nil { connection.cancel(); self.connections.removeValue(forKey: id) }
+                else { self.receive(connection, id: id, accumulated: bytes) }
+            }
         }
     }
     private func reply(_ connection: NWConnection, id: UUID, status: String, mime: String, data: Data) {
         let header = "HTTP/1.1 \(status)\r\nContent-Type: \(mime)\r\nContent-Length: \(data.count)\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n"
-        connection.send(content: Data(header.utf8) + data, completion: .contentProcessed { _ in connection.cancel(); self.connections.removeValue(forKey: id) })
+        connection.send(content: Data(header.utf8) + data, completion: .contentProcessed { [weak self] _ in
+            Task { @MainActor in connection.cancel(); self?.connections.removeValue(forKey: id) }
+        })
     }
-    public func stop() { handler = nil; listener?.cancel(); listener = nil; for connection in connections.values { connection.cancel() }; connections.removeAll() }
+    public func stop(error: Error = PlanError("network")) {
+        let continuation = startContinuation; startContinuation = nil
+        continuation?.resume(throwing: error)
+        handler = nil; listener?.cancel(); listener = nil
+        for connection in connections.values { connection.cancel() }; connections.removeAll()
+    }
     public static func serve(_ request: HTTPRequest, root: URL) throws -> (String, Data) {
         let file = try request.file(under: root)
         let mime: String
