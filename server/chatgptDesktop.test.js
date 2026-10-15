@@ -295,23 +295,35 @@ for (const sharing of [true, false]) test(`returning OAuth requests consent only
   await assert.rejects(oauth.signIn(p, 'host', new AbortController().signal, async () => {}), { code: 'access_denied' });
 });
 
-for (const action of ['cancel', 'select', 'disconnect', 'close']) test(`${action} interrupts token refresh and releases the mutation queue`, { timeout: 2000 }, async () => {
-  let started;
+for (const action of ['cancel', 'select', 'disconnect', 'close']) test(`${action} preserves in-flight rotation without starting inference`, { timeout: 2000 }, async () => {
+  let started, release, tokenSignal, revokedToken;
   const began = new Promise(resolve => { started = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
   const oauth = createOAuth({ fetchImpl: async (_url, { signal }) => {
-    started(); return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    tokenSignal = signal; started(); await gate;
+    signal.throwIfAborted();
+    return json({ access_token: 'new-access', refresh_token: 'rotated', token_type: 'Bearer', expires_in: 3600 });
   } });
-  oauth.revoke = async () => true;
-  const { runtime, read, vault } = fixture({ oauth });
+  oauth.revoke = async p => { revokedToken = p.tokens.refresh; return true; };
+  let apiCalls = 0;
+  const { runtime, read, vault } = fixture({ oauth, fetchImpl: async () => { apiCalls++; return json({ models: [] }); } });
   const state = read(); state.profiles[0].tokens.expiresAt = 1; await vault.write(state);
   const controller = new AbortController();
   const rejected = assert.rejects(runtime.models('p1', controller.signal), { name: 'AbortError' });
   await began;
+  let mutation;
   if (action === 'cancel') controller.abort();
   else if (action === 'close') runtime.close();
-  else await runtime[action]('p1');
-  await rejected;
-  assert.equal((await runtime.snapshot()).profiles[0].status, action === 'disconnect' ? 'disconnected' : 'connected');
+  else mutation = runtime[action]('p1');
+  assert.equal(tokenSignal.aborted, false);
+  release(); await rejected; await mutation;
+  assert.equal(apiCalls, 0);
+  if (action === 'disconnect') {
+    assert.equal(revokedToken, 'rotated'); assert.equal(read().profiles[0].tokens, undefined);
+  } else {
+    assert.equal(read().profiles[0].tokens.refresh, 'rotated');
+    await runtime.models('p1'); assert.equal(apiCalls, 1);
+  }
 });
 
 test('received rotation is checkpointed even if cancellation arrives before validation', async () => {
@@ -450,4 +462,62 @@ test('vault directory and encryption failures are sanitized persistence errors',
     const invalidDirectory = join(directory, 'not-a-directory'); await writeFile(invalidDirectory, 'file');
     await assert.rejects(createVault(invalidDirectory, storage).write(state), { code: 'storage_write_failed' });
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('refresh without ID token retains verified identity and survives restart', async () => {
+  let verifications = 0, checkpoint;
+  const oauth = createOAuth({ fetchImpl: async () => json({ access_token: 'new', refresh_token: 'rotated', token_type: 'Bearer', expires_in: 3600 }),
+    verifyToken: async () => { verifications++; throw new Error('must not reverify the old ID token'); } });
+  const previous = profile();
+  const updated = await oauth.refresh(previous, async pending => { checkpoint = pending; });
+  assert.deepEqual(updated.identity, previous.identity);
+  assert.equal(updated.tokens.id, previous.tokens.id);
+  assert.equal(updated.tokens.refresh, 'rotated');
+  assert.deepEqual(updated.scopes, previous.scopes);
+  assert.equal(verifications, 0);
+  const restored = await oauth.refresh({ ...previous, pendingRefresh: checkpoint }, async () => { throw new Error('must reuse checkpoint'); });
+  assert.deepEqual(restored, updated);
+});
+
+test('new refresh ID tokens are verified and pre-cancelled refresh never starts', async () => {
+  let verified = false, fetched = 0;
+  const oauth = createOAuth({ fetchImpl: async () => { fetched++; return json({ access_token: 'new', refresh_token: 'rotated', token_type: 'Bearer', id_token: 'new-id', expires_in: 3600 }); },
+    verifyToken: async (token, client, nonce, subject) => {
+      assert.equal(token, 'new-id'); assert.equal(client, 'issued-1'); assert.equal(subject, 'u1');
+      assert.equal(nonce, undefined); verified = true; return { subject: 'u1', email: 'new@example.com' };
+    } });
+  const updated = await oauth.refresh(profile(), async () => {});
+  assert.equal(verified, true); assert.equal(updated.tokens.id, 'new-id');
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(oauth.refresh(profile(), async () => {}, controller.signal), { name: 'AbortError' });
+  assert.equal(fetched, 1);
+});
+
+test('authorization-code exchange still requires an ID token', async () => {
+  const oauth = createOAuth({ openBrowser: async url => {
+    const auth = new URL(url);
+    await fetch(`${auth.searchParams.get('redirect_uri')}?${new URLSearchParams({ state: auth.searchParams.get('state'), code: 'code', client_id: 'issued-1' })}`);
+  }, fetchImpl: async () => json({ access_token: 'new', refresh_token: 'rotated', token_type: 'Bearer', expires_in: 3600 }) });
+  await assert.rejects(oauth.signIn({ id: 'p' }, 'host', new AbortController().signal, async () => {}), { code: 'invalid_identity' });
+});
+
+test('final output cannot silently bypass concurrent lookup calls', () => {
+  const answer = { type: 'function_call', namespace: 'open_historia', name: 'answer', call_id: 'a', arguments: '{"events":[]}' };
+  const lookup = { type: 'function_call', namespace: 'open_historia', name: 'lookup', call_id: 'b', arguments: '{}' };
+  const request = buildRequest({ systemPrompt: '', history: [], tool: { name: 'answer', schema: {} }, lookupTools: [{ name: 'lookup', schema: {} }] }, 'model');
+  assert.equal(request.parallel_tool_calls, false);
+  for (const output of [[answer, lookup], [lookup, answer], [answer, { ...answer, call_id: 'c' }]]) {
+    assert.throws(() => gameResult({ output }, 'answer'), { code: 'incomplete' });
+  }
+  assert.deepEqual(gameResult({ output: [answer] }, 'answer').toolInput, { events: [] });
+  assert.equal(gameResult({ output: [lookup] }, 'answer').lookupCalls.length, 1);
+});
+
+for (const refreshToken of [undefined, '', null, 123]) test(`refresh requires a usable replacement token (${String(refreshToken)})`, async () => {
+  const oauth = createOAuth({ fetchImpl: async () => json({ access_token: 'new', refresh_token: refreshToken, token_type: 'Bearer', expires_in: 3600 }) });
+  const { runtime, read, vault } = fixture({ oauth });
+  const state = read(); state.profiles[0].tokens.expiresAt = 1; await vault.write(state);
+  await assert.rejects(runtime.models('p1'), { code: 'invalid_identity' });
+  assert.equal(read().profiles[0].tokens, undefined);
+  assert.equal((await runtime.snapshot()).profiles[0].status, 'disconnected');
 });

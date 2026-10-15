@@ -43,7 +43,7 @@ export function buildRequest(request, model) {
   const tools = declarations.map(tool => ({ type: 'function', name: tool.name, description: tool.description || '', parameters: tool.schema, strict: false }));
   return {
     model, instructions: request.systemPrompt, input, store: false, stream: true, include: ["reasoning.encrypted_content"],
-    ...(tools.length ? { tools: [{ type: 'namespace', name: 'open_historia', description: 'Open Historia game output and lookups', tools }], tool_choice: 'required', parallel_tool_calls: !request.requireOutputTool } : {}),
+    ...(tools.length ? { tools: [{ type: 'namespace', name: 'open_historia', description: 'Open Historia game output and lookups', tools }], tool_choice: 'required', parallel_tool_calls: false } : {}),
     // ChatGPT plan usage rejects max_output_tokens, even when an API-key
     // provider's saved settings include a positive maxTokens value.
   };
@@ -93,6 +93,9 @@ export async function consumeResponse(response, onEvent = () => {}) {
 export function gameResult(response, outputTool) {
   const calls = (response.output || []).filter(item => item.type === 'function_call');
   const output = calls.find(item => item.name === outputTool);
+  // Never commit final game state alongside unexecuted lookups (or competing
+  // final outputs), even if a service ignores parallel_tool_calls:false.
+  if (output && calls.length !== 1) throw new ChatGPTError('incomplete');
   let toolInput = null;
   if (output) {
     try { toolInput = JSON.parse(output.arguments); } catch { throw new ChatGPTError('incomplete'); }

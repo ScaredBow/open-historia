@@ -88,15 +88,23 @@ export function createOAuth({ fetchImpl = fetch, openBrowser, verifyToken } = {}
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw responseError(data.error, response.status);
     if (typeof data.access_token !== 'string' || !data.access_token || data.token_type?.toLowerCase() !== 'bearer'
-        || !Number.isFinite(data.expires_in) || data.expires_in <= 0 || typeof data.id_token !== 'string'
-        || (data.refresh_token !== undefined && typeof data.refresh_token !== 'string')) throw new ChatGPTError('invalid_identity');
+        || !Number.isFinite(data.expires_in) || data.expires_in <= 0
+        || (params.grant_type !== 'refresh_token' && typeof data.id_token !== 'string')
+        || (data.id_token !== undefined && (typeof data.id_token !== 'string' || !data.id_token))
+        || (params.grant_type === 'refresh_token' && (typeof data.refresh_token !== 'string' || !data.refresh_token))
+        || (data.refresh_token !== undefined && (typeof data.refresh_token !== 'string' || !data.refresh_token))) throw new ChatGPTError('invalid_identity');
     return data;
   };
   const validated = async (data, profile, nonce, receivedAt = Date.now()) => {
-    const identity = await verify(data.id_token, profile.clientId, nonce, profile.identity?.subject, receivedAt);
+    // OIDC refresh may omit id_token. Keep the previously verified identity;
+    // never turn an identity-less profile into a connected account this way.
+    if (!data.id_token && (!profile.identity?.subject || !profile.tokens?.id)) throw new ChatGPTError('invalid_identity');
+    const identity = data.id_token
+      ? await verify(data.id_token, profile.clientId, nonce, profile.identity?.subject, receivedAt)
+      : profile.identity;
     return { ...profile, identity, tokens: {
       access: data.access_token, refresh: data.refresh_token || profile.tokens?.refresh,
-      id: data.id_token, expiresAt: receivedAt + data.expires_in * 1000,
+      id: data.id_token || profile.tokens?.id, expiresAt: receivedAt + data.expires_in * 1000,
       earliestRefreshAt: data.earliest_refresh_at,
     }, scopes: typeof data.scope === 'string' ? data.scope.split(/\s+/) : (nonce ? [] : profile.scopes || []), pendingRefresh: undefined };
   };
@@ -129,8 +137,11 @@ export function createOAuth({ fetchImpl = fetch, openBrowser, verifyToken } = {}
       } finally { listener.close(); }
     },
     async refresh(profile, checkpoint, callerSignal) {
-      const signal = AbortSignal.any([AbortSignal.timeout(60000), ...(callerSignal ? [callerSignal] : [])]);
-      signal.throwIfAborted();
+      callerSignal?.throwIfAborted();
+      // Once sent, rotation must finish even if the caller cancels: the server
+      // may already have invalidated the predecessor. Runtime checks caller
+      // cancellation again after the replacement is persisted, before inference.
+      const signal = AbortSignal.timeout(60000);
       // Persist received rotation before verifying identity; a JWKS outage must
       // not discard the only valid successor refresh token. It is never used
       // for inference until validation succeeds, including after a restart.
