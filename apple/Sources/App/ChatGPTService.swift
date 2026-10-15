@@ -138,7 +138,7 @@ import HistoriaCore
         do {
             if p["pending"] != nil { p = try await validatePending(p); try save(p) }
             guard let tokens = p["tokens"] as? JSON, let expiry = tokens["expiresAt"] as? Double else { throw PlanError("sign_in_required") }
-            let earliest = tokens["earliest"] as? Double ?? (tokens["earliest"] as? String).flatMap { ISO8601DateFormatter().date(from: $0)?.timeIntervalSince1970 } ?? 0
+            let earliest = OAuthProtocol.earliestRefreshTime(tokens["earliest"])
             let now = Date().timeIntervalSince1970
             if expiry < now + 60 && earliest <= now {
                 guard let refresh = tokens["refresh"] as? String, let client = p["clientId"] as? String else { throw PlanError("sign_in_required") }

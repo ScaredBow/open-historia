@@ -8,6 +8,12 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(String(decoding: OAuthProtocol.form(["token": "a+b &=/"]), as: UTF8.self), "token=a%2Bb%20%26%3D%2F")
         XCTAssertNotEqual(try OAuthProtocol.random(), try OAuthProtocol.random())
     }
+    func testEarliestRefreshDates() {
+        XCTAssertEqual(OAuthProtocol.earliestRefreshTime(1700000000.125), 1700000000.125)
+        XCTAssertEqual(OAuthProtocol.earliestRefreshTime("2023-11-14T22:13:20.125Z"), 1700000000.125, accuracy: 0.001)
+        XCTAssertEqual(OAuthProtocol.earliestRefreshTime("2023-11-14T22:13:20Z"), 1700000000)
+        XCTAssertEqual(OAuthProtocol.earliestRefreshTime(nil), 0)
+    }
     func testAuthorization() throws {
         let url = OAuthProtocol.authorize(profile: [:], host: "urn:uuid:host", redirect: "http://127.0.0.1:1234/auth/callback", state: "state", nonce: "nonce", verifier: "verifier")
         let params = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })

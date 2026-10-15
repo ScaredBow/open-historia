@@ -1,5 +1,6 @@
 import XCTest
 import HistoriaCore
+import Security
 @testable import OpenHistoria
 
 final class MemoryVault: VaultStore {
@@ -117,6 +118,19 @@ final class MockHTTP: URLProtocol {
         _ = try? await turn.value
         let pending = (vault.state["profiles"] as! [JSON])[0]["pending"] as? JSON
         XCTAssertEqual((pending?["data"] as? JSON)?["refresh_token"] as? String, "durable-successor")
+    }
+
+    func testRealKeychainPersistsDeviceOnlyRecord() throws {
+        let service = "org.openhistoria.tests." + UUID().uuidString
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "connections"]
+        defer { SecItemDelete(query as CFDictionary) }
+        let vault = KeychainVault(service: service)
+        let initial = try vault.read(); try vault.write(initial)
+        XCTAssertEqual(try vault.read()["hostId"] as? String, initial["hostId"] as? String)
+        var attributes = query; attributes[kSecReturnAttributes as String] = true
+        var result: CFTypeRef?
+        XCTAssertEqual(SecItemCopyMatching(attributes as CFDictionary, &result), errSecSuccess)
+        XCTAssertEqual((result as? [String: Any])?[kSecAttrAccessible as String] as? String, kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
     }
 
 }

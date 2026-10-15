@@ -1028,7 +1028,7 @@ const ConnectionsSection = () => {
                 <div style={{ fontSize: "0.82rem", fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{connectionDisplayName(connection)}</div>
                 <div style={{ ...helperStyle, marginTop: "0.1rem" }}>
                 {getProviderMeta(connection.provider).label}
-                {selfHosted ? ` · ${connection.endpoint || "no endpoint"}` : ` · key ${connection.apiKey.trim() ? "set" : "not set"}`}
+                {(!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE) && connection.provider === "chatgpt" ? " · account sign-in" : selfHosted ? ` · ${connection.endpoint || "no endpoint"}` : ` · key ${connection.apiKey.trim() ? "set" : "not set"}`}
                 {` · used by ${using} entr${using === 1 ? "y" : "ies"}`}
                 </div>
                 </div>

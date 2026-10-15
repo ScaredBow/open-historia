@@ -95,8 +95,9 @@ optional user-entered API-key settings follow the existing game's settings.
    Validate Apple's thinned/uncompressed size at archive submission. The build
    resource budget is 80 MB and CI rejects a Clip >=100,000,000 bytes.
 7. Complete App Store privacy declarations for actual outgoing game/AI data and
-   review included third-party assets/licenses. The bundled privacy manifest is
-   not a substitute for App Store privacy labels. Source remains AGPL-3.0-or-later.
+   review included third-party assets/licenses. The bundled privacy manifest declares game content and account identifiers
+   for ChatGPT functionality; it is not a substitute for verified App Store privacy
+   labels and the publisher’s review of OpenAI and optional community services. Source remains AGPL-3.0-or-later.
 
 ## Required release evidence
 

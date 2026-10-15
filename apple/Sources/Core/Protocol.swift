@@ -47,6 +47,15 @@ public enum OAuthProtocol {
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw PlanError("storage_unavailable") }
         return Data(bytes).base64url
     }
+    public static func earliestRefreshTime(_ value: Any?) -> TimeInterval {
+        if let number = value as? Double, number.isFinite { return number }
+        guard let text = value as? String else { return 0 }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date.timeIntervalSince1970 }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text)?.timeIntervalSince1970 ?? 0
+    }
     public static func challenge(_ verifier: String) -> String { Data(SHA256.hash(data: Data(verifier.utf8))).base64url }
     public static func form(_ values: [String: String]) -> Data {
         let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
