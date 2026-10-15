@@ -5,7 +5,7 @@ import { ChatGPTError, responseError, fetchResponse } from './errors.js';
 export async function apiRequest(path, access, { fetchImpl = fetch, signal, body, onResponse } = {}) {
   const response = await fetchResponse(fetchImpl, `${RESOURCE}/${path}`, {
     method: body ? 'POST' : 'GET', redirect: 'error', signal,
-    headers: { Authorization: `Bearer ${access}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { Authorization: `Bearer ${access}`, ...(body ? { 'Content-Type': 'application/json', Accept: 'text/event-stream' } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   onResponse?.(response);
@@ -51,24 +51,45 @@ export function buildRequest(request, model) {
 
 export async function consumeResponse(response, onEvent = () => {}) {
   const contentType = response.headers.get('content-type');
-  if (!response.body || (contentType !== null && contentType.split(';')[0].trim().toLowerCase() !== 'text/event-stream')) throw new ChatGPTError('incomplete');
+  if (!response.body || (contentType !== null && contentType.split(';')[0].trim().toLowerCase() !== 'text/event-stream')) {
+    await response.body?.cancel().catch(() => {});
+    throw new ChatGPTError('incomplete', undefined, 'invalid_stream');
+  }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '', dataLines = [], completed, total = 0;
+  const items = new Map(), textItems = new Map();
   const dispatch = () => {
     if (!dataLines.length) return;
     const data = dataLines.join('\n'); dataLines = [];
     if (data === '[DONE]') return;
     let event;
-    try { event = JSON.parse(data); } catch { throw new ChatGPTError('incomplete'); }
+    try { event = JSON.parse(data); } catch { throw new ChatGPTError('incomplete', undefined, 'malformed_event'); }
     onEvent({ type: 'activity' });
-    if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') onEvent({ type: 'delta', delta: event.delta });
+    if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
+      const index = Number.isInteger(event.output_index) ? event.output_index : 0;
+      const contentIndex = Number.isInteger(event.content_index) ? event.content_index : 0;
+      const parts = textItems.get(index) || new Map();
+      parts.set(contentIndex, (parts.get(contentIndex) || '') + event.delta); textItems.set(index, parts);
+      onEvent({ type: 'delta', delta: event.delta });
+    }
+    if (event.type === 'response.output_item.done' && event.item && typeof event.item === 'object') {
+      items.set(Number.isInteger(event.output_index) ? event.output_index : items.size, event.item);
+    }
     if (event.type === 'response.function_call_arguments.delta' && typeof event.delta === 'string') onEvent({ type: 'toolDelta', delta: event.delta });
     if (event.type === 'response.failed' || event.type === 'error') throw responseError(event.response?.error?.code || event.code || event.error?.code);
-    if (event.type === 'response.incomplete') throw new ChatGPTError('incomplete');
+    if (event.type === 'response.incomplete') throw new ChatGPTError('incomplete', undefined, 'service_incomplete');
     if (event.type === 'response.completed') {
-      if (event.response?.status !== 'completed') throw new ChatGPTError('incomplete');
-      completed = event.response;
+      if (event.response?.status !== undefined && event.response.status !== 'completed') throw new ChatGPTError('incomplete', undefined, 'service_incomplete');
+      // The completion event is the commit boundary. Some direct-route streams
+      // omit its output payload; retain completed items and text deltas just as
+      // the reference client does, but never promote them without this event.
+      for (const [index, parts] of textItems) {
+        if (!items.has(index)) items.set(index, { type: 'message', content: [...parts].sort(([a], [b]) => a - b)
+          .map(([, text]) => ({ type: 'output_text', text })) });
+      }
+      completed = { ...event.response, status: 'completed', output: event.response?.output?.length
+        ? event.response.output : [...items].sort(([a], [b]) => a - b).map(([, item]) => item) };
     }
   };
   try {
@@ -85,7 +106,7 @@ export async function consumeResponse(response, onEvent = () => {}) {
       }
       if (done) break;
     }
-    if (!completed) throw new ChatGPTError('incomplete');
+    if (!completed) throw new ChatGPTError('incomplete', undefined, 'missing_completion');
     return completed;
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
@@ -110,6 +131,6 @@ export function gameResult(response, outputTool) {
   }
   const rawText = (response.output || []).filter(item => item.type === 'message')
     .flatMap(item => item.content || []).filter(part => part.type === 'output_text').map(part => part.text).join('');
-  if (!rawText && !output && !lookupCalls.length) throw new ChatGPTError('incomplete');
+  if (!rawText && !output && !lookupCalls.length) throw new ChatGPTError('incomplete', undefined, 'empty_output');
   return { rawText, toolInput, ...(lookupCalls.length ? { lookupCalls } : {}) };
 }

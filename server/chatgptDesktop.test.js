@@ -521,3 +521,72 @@ for (const refreshToken of [undefined, '', null, 123]) test(`refresh requires a 
   assert.equal(read().profiles[0].tokens, undefined);
   assert.equal((await runtime.snapshot()).profiles[0].status, 'disconnected');
 });
+
+test('Responses requests explicitly negotiate SSE', async () => {
+  const { runtime } = fixture({ fetchImpl: async (url, options) => {
+    if (url.endsWith('/models')) return json({ models: [{ slug: 'allowed', visibility: 'list' }] });
+    assert.equal(options.headers.Accept, 'text/event-stream');
+    assert.equal(options.headers['Content-Type'], 'application/json');
+    return sse([completed]);
+  } });
+  assert.equal((await runtime.infer({ profileId: 'p1', history: [], systemPrompt: '' }, () => {})).result.rawText, 'Hello');
+});
+
+test('advisor text survives a completion event without a repeated output payload', async () => {
+  for (const response of [undefined, { status: 'completed' }, { status: 'completed', output: [] }]) {
+    const stream = sse([
+      { type: 'response.output_text.delta', output_index: 1, content_index: 0, delta: 'Hello ' },
+      { type: 'response.output_text.delta', output_index: 1, content_index: 0, delta: 'Canada' },
+      { type: 'response.completed', response },
+    ]);
+    assert.equal(gameResult(await consumeResponse(stream)).rawText, 'Hello Canada');
+  }
+});
+
+test('completed output items preserve tools and reasoning with a sparse completion event', async () => {
+  const output = [
+    { type: 'reasoning', id: 'r1', encrypted_content: 'opaque', summary: [] },
+    { type: 'function_call', namespace: 'open_historia', call_id: 'c1', name: 'lookup', arguments: '{"q":"Canada"}' },
+  ];
+  const response = await consumeResponse(sse([
+    ...output.map((item, output_index) => ({ type: 'response.output_item.done', output_index, item })),
+    { type: 'response.completed', response: { status: 'completed', usage: { input_tokens: 7 } } },
+  ]));
+  assert.deepEqual(response.output, output);
+  assert.equal(response.usage.input_tokens, 7);
+  assert.deepEqual(gameResult(response, 'answer').lookupCalls[0].chatgptItems, output);
+});
+
+test('streamed text is not duplicated when done items or the complete output are also present', async () => {
+  const item = { type: 'message', content: [{ type: 'output_text', text: 'Hello' }] };
+  for (const output of [undefined, [item]]) {
+    const response = await consumeResponse(sse([
+      { type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: 'Hello' },
+      { type: 'response.output_item.done', output_index: 0, item },
+      { type: 'response.completed', response: { status: 'completed', output } },
+    ]));
+    assert.equal(gameResult(response).rawText, 'Hello');
+  }
+});
+
+test('sparse output still requires completion and never accepts partial tool argument deltas', async () => {
+  const delta = { type: 'response.output_text.delta', delta: 'partial' };
+  for (const events of [[delta], [delta, { type: 'response.incomplete' }], [delta, { type: 'response.completed', response: { status: 'in_progress' } }]]) {
+    await assert.rejects(consumeResponse(sse(events)), { code: 'incomplete' });
+  }
+  const response = await consumeResponse(sse([
+    { type: 'response.function_call_arguments.delta', delta: '{"events":[]}' },
+    { type: 'response.completed' },
+  ]));
+  assert.throws(() => gameResult(response, 'answer'), { code: 'incomplete' });
+});
+
+test('incomplete-response diagnostics identify the stage without exposing remote content', async () => {
+  await assert.rejects(consumeResponse(new Response('private payload')), error => {
+    assert.match(safeError(error).message, /did not return an event stream/);
+    assert.equal(safeError(error).message.includes('private payload'), false); return true;
+  });
+  await assert.rejects(consumeResponse(sse([])), /without a completion event/);
+  assert.throws(() => gameResult({ output: [] }), /no usable output/);
+  assert.equal(safeError(new ChatGPTError('incomplete', undefined, 'private payload')).message.includes('private payload'), false);
+});

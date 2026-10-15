@@ -26,9 +26,17 @@ const messages = {
   rate_limited: 'ChatGPT is rate limited. Please try again later.',
   service_unavailable: 'ChatGPT is temporarily unavailable. Please try again later.',
 };
+const incompleteReasons = {
+  invalid_stream: 'The server did not return an event stream.',
+  malformed_event: 'The event stream contained invalid JSON.',
+  service_incomplete: 'The service reported an unfinished response.',
+  missing_completion: 'The stream ended without a completion event.',
+  empty_output: 'The completed response contained no usable output.',
+};
 export class ChatGPTError extends Error {
-  constructor(code, status) {
+  constructor(code, status, reason) {
     super(messages[code] || 'ChatGPT could not complete the request. Reconnect in Settings if it persists.');
+    if (code === 'incomplete' && Object.hasOwn(incompleteReasons, reason)) this.message += ` ${incompleteReasons[reason]}`;
     this.name = 'ChatGPTError'; this.code = code; this.status = status;
   }
 }
