@@ -31,7 +31,7 @@ const FORMER_GEMINI_DEFAULT = "gemini-3.5-flash-lite";
 export const OPENAI_DEFAULT_MODEL = "gpt-6-luna";
 
 export const PROVIDER_OPTIONS = [
-    ...(!import.meta.env?.VITE_OH_WEB && globalThis.window?.ohChatGPT ? [{
+    ...((!import.meta.env?.VITE_OH_WEB || import.meta.env?.VITE_OH_APPLE) && globalThis.window?.ohChatGPT ? [{
         value: "chatgpt", label: "ChatGPT plan", group: "Desktop accounts",
         description: "Sign in with ChatGPT — use your plan without an API key",
         searchTerms: ["chatgpt", "subscription", "sign in"],

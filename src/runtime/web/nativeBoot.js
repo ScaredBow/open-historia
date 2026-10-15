@@ -35,7 +35,7 @@ export const CONNECT_DEADLINE_MS = 8000;
 
 // Capacitor injects window.Capacitor before the bundle runs. Same signal router.js
 // uses to pick native HTTP, and homePage.js to skip the browser-only demo notice.
-export const isNativeApp = () => typeof window !== "undefined" && Boolean(window.Capacitor);
+export const isNativeApp = () => typeof window !== "undefined" && Boolean(window.Capacitor || window.ohApple?.platform === "ios");
 
 // The one line under the wordmark. `null` is "still working"; everything else is a
 // settled connection, including the origin fallback, which is a real answer and not

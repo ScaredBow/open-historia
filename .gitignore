@@ -66,3 +66,13 @@ electron/channel.json
 
 # Relocatable wiki preview (scripts/build-wiki-preview.mjs) — a build output, like dist-site.
 dist-wiki-preview/
+
+# Apple generated project, local signing overrides and bundled UI
+dist-ios/
+apple/Resources/www/
+apple/.build/
+apple/build/
+apple/*.xcodeproj/
+apple/Config/Local.xcconfig
+
+apple/build-size.json

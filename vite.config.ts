@@ -124,12 +124,13 @@ export default defineConfig(({ mode }) => ({
     // generated seed files on any machine that hasn't run a web build first (e.g.
     // a fresh "Download for Windows" extract). Boolean is safe: every use site is
     // a plain truthiness check.
-    'import.meta.env.VITE_OH_WEB': JSON.stringify(mode === 'web' || mode === 'android'),
+    'import.meta.env.VITE_OH_WEB': JSON.stringify(mode === 'web' || mode === 'android' || mode === 'ios'),
     // The Android app is the web build with everything on the device: the map
     // under /assets instead of a content node, native file saving, native HTTP
     // for a model on the LAN. A second compile-time literal, so those branches
     // are stripped from the website exactly as the web ones are from desktop.
     'import.meta.env.VITE_OH_NATIVE': JSON.stringify(mode === 'android'),
+    'import.meta.env.VITE_OH_APPLE': JSON.stringify(mode === 'ios'),
   },
   // PTR placement runs in a module worker whose dependency graph can be
   // split into multiple chunks. Vite's default worker output is IIFE, which
@@ -144,9 +145,9 @@ export default defineConfig(({ mode }) => ({
         plugins: [['babel-plugin-react-compiler']],
       },
     }),
-    dropMapBinaries(mode === 'web' || mode === 'android'),
+    dropMapBinaries(mode === 'web' || mode === 'android' || mode === 'ios'),
     emitWebVersion(mode === 'web'),
-    dropWebAnalytics(mode === 'android'),
+    dropWebAnalytics(mode === 'android' || mode === 'ios'),
   ],
   // Proxy API calls to the Express server during `npm run dev` so the map editor's
   // save/load (and the game's runtime endpoints) work with hot-reload too.

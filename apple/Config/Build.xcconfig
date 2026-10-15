@@ -1,0 +1,7 @@
+// Override locally without committing Apple account identifiers/signing material.
+HISTORIA_BUNDLE_ID = org.openhistoria.game
+HISTORIA_APP_GROUP = group.$(HISTORIA_BUNDLE_ID)
+HISTORIA_DOMAIN = example.invalid
+HISTORIA_STORE_ID = UNCONFIGURED
+DEVELOPMENT_TEAM =
+#include? "Local.xcconfig"

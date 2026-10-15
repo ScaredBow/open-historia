@@ -142,7 +142,7 @@ const TutorialVideo = () => {
   );
 };
 
-const ChatGPTQuickSetup = !import.meta.env.VITE_OH_WEB
+const ChatGPTQuickSetup = (!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE)
   ? React.lazy(() => import("../../desktop/ChatGPTQuickSetup.jsx")) : null;
 
 const groupedProviders = () => {
@@ -251,7 +251,7 @@ export const ApiSetupPrompt = ({ providerLabel = "the selected provider", missin
           Until it is set, time skips fall back to canned events and the advisor cannot answer. Paste your details below and you are ready to play.
         </div>
 
-        {!import.meta.env.VITE_OH_WEB && window.ohChatGPT && (
+        {(!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE) && window.ohChatGPT && (
           <React.Suspense fallback={<p>Loading ChatGPT sign-in…</p>}>
             <ChatGPTQuickSetup onSaved={onSaved} />
           </React.Suspense>

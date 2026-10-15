@@ -1,7 +1,7 @@
 export async function unwrap(promise) {
   const response = await promise;
   if (!response?.ok) {
-    const error = new Error(response?.error?.message || 'ChatGPT desktop connection unavailable.');
+    const error = new Error(response?.error?.message || 'ChatGPT connection unavailable.');
     error.code = response?.error?.code;
     if (error.code === 'cancelled') error.name = 'AbortError';
     // Plan limits never silently fall through to a paid API-key provider.
@@ -12,7 +12,7 @@ export async function unwrap(promise) {
 
 export async function callChatGPT(systemPrompt, history, opts = {}) {
   const bridge = globalThis.window?.ohChatGPT;
-  if (!bridge) throw new Error('ChatGPT sign-in is available only in the desktop app.');
+  if (!bridge) throw new Error('ChatGPT sign-in is available only in a supported local app.');
   const id = crypto.randomUUID();
   opts.signal?.throwIfAborted();
   let full = "";

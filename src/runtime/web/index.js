@@ -51,6 +51,11 @@ export const installWebBackend = async () => {
   // so the library below already has them (saveMove.js). Never in the app.
   if (!isNativeApp()) await bringHttpSavesAcross({ db: idb });
 
+  if (import.meta.env.VITE_OH_APPLE) {
+    const { installAppleSaves } = await import("../../apple/saves.js");
+    await installAppleSaves();
+  }
+
   // Seed the default scenario before any /api call, then intercept.
   try {
     await ensureSeeded();

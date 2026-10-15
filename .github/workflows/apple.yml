@@ -1,0 +1,50 @@
+name: Apple app and App Clip
+on:
+  push:
+    branches: [codex/ios-app-clip]
+  pull_request:
+    paths: ['apple/**', 'src/**', 'vite.config.ts', 'package*.json', '.github/workflows/apple.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:apple
+      - run: npm run build:ios
+      - name: Core security and protocol tests
+        run: swift test --package-path apple
+      - name: Generate native project
+        run: |
+          brew install xcodegen
+          sips -z 1024 1024 apple/Resources/Assets.xcassets/AppIcon.appiconset/Icon.png >/dev/null
+          cd apple
+          xcodegen generate
+      - name: Build containing app and App Clip for devices
+        run: xcodebuild -project apple/OpenHistoria.xcodeproj -scheme OpenHistoria -configuration Release -sdk iphoneos -derivedDataPath apple/build/device CODE_SIGNING_ALLOWED=NO build
+      - name: Check App Clip size
+        run: node apple/scripts/check-size.mjs apple/build/device/Build/Products/Release-iphoneos/OpenHistoria.app/AppClips/OpenHistoriaClip.app
+      - name: Test on iPhone simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
+          xcodebuild -project apple/OpenHistoria.xcodeproj -scheme OpenHistoria -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath apple/build/simulator -resultBundlePath apple/build/results.xcresult CODE_SIGNING_ALLOWED=NO test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apple-validation
+          path: |
+            apple/build-size.json
+            apple/build/results.xcresult
+            apple/build/device/Build/Products/Release-iphoneos/*.app
+          retention-days: 7

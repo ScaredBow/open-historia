@@ -88,6 +88,6 @@ export default function ChatGPTConnection({ connection }) {
       {models.length === 0 && <p>No models available. Refresh or manage your ChatGPT access.</p>}
     </>}
     {message && <p role={failed ? 'alert' : 'status'}>{message}</p>}
-    <p style={{ fontSize: '0.8em', opacity: 0.75 }}>Credentials stay in this desktop app’s OS-protected storage. Manage usage opens ChatGPT Settings. Signing out stops active ChatGPT requests.</p>
+    <p style={{ fontSize: '0.8em', opacity: 0.75 }}>Credentials stay in this app’s OS-protected storage. Manage usage opens ChatGPT Settings. Signing out stops active ChatGPT requests.</p>
   </section>;
 }

@@ -396,7 +396,7 @@ const Toggle = ({ label, enabled, onToggle }) => {
 };
 
 // The desktop account UI is eliminated from web and Android builds.
-const ChatGPTConnection = !import.meta.env.VITE_OH_WEB
+const ChatGPTConnection = (!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE)
     ? React.lazy(() => import("../../desktop/ChatGPTConnection.jsx")) : null;
 
 const ApiProviderSelector = ({ provider, onProviderChange }) => {
@@ -772,7 +772,7 @@ const ConnectionFields = ({ connection, sharedBy = 1 }) => {
                 : "Base URL of a self-hosted proxy that speaks the Anthropic Messages API (POST /messages)."}
             />
         )}
-        {!import.meta.env.VITE_OH_WEB && connection.provider === "chatgpt" ? (
+        {(!import.meta.env.VITE_OH_WEB || import.meta.env.VITE_OH_APPLE) && connection.provider === "chatgpt" ? (
             <React.Suspense fallback={<p>Loading ChatGPT connection…</p>}>
                 <ChatGPTConnection connection={connection} />
             </React.Suspense>
